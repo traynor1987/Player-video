@@ -35,7 +35,7 @@ class SourceRepository(
                     when {
                         response.code() == 401 || response.code() == 403 -> ConnectionResult.AuthenticationFailed
                         !response.isSuccessful -> ConnectionResult.ServerUnavailable
-                        response.body()?.userInfo?.let { it.authenticated == 1 || it.status.equals("Active", true) } == true -> ConnectionResult.Success(response.body()?.userInfo?.username)
+                        response.body()?.userInfo?.let { it.authenticated == "1" || it.status.equals("Active", true) } == true -> ConnectionResult.Success(response.body()?.userInfo?.username)
                         else -> ConnectionResult.AuthenticationFailed
                     }
                 }
