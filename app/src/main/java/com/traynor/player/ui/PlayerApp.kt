@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
 
 private enum class Destination(val route: String, val title: String, val icon: ImageVector) {
     Home("home", "Home", Icons.Default.Home), Live("live", "Live TV", Icons.Default.LiveTv), Movies("movies", "Movies", Icons.Default.Movie),
-    Series("series", "Series", Icons.Default.VideoLibrary), Guide("guide", "TV Guide", Icons.Default.CalendarMonth),
+    Series("series", "Series", Icons.Default.VideoLibrary), Football("football", "Football", Icons.Default.SportsSoccer), Guide("guide", "TV Guide", Icons.Default.CalendarMonth),
     Search("search", "Search", Icons.Default.Search), Favourites("favourites", "Favourites", Icons.Default.Favorite), Settings("settings", "Settings", Icons.Default.Settings)
 }
 
@@ -121,9 +121,9 @@ private enum class Destination(val route: String, val title: String, val icon: I
             if (rail && !isPlayer) NavigationRail(header = { Icon(painterResource(R.drawable.player_mark), "Player", Modifier.padding(16.dp).size(40.dp), tint = Color.Unspecified) }) {
                 Destination.entries.forEach { item -> NavigationRailItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }, label = { Text(item.title) }) }
             }
-            Scaffold(bottomBar = { if (!rail && !isPlayer) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Movies, Destination.Search, Destination.Settings).forEach { item -> NavigationBarItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }) } } }) { padding ->
+            Scaffold(bottomBar = { if (!rail && !isPlayer) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Football, Destination.Movies, Destination.Settings).forEach { item -> NavigationBarItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }) } } }) { padding ->
                 NavHost(nav, Destination.Home.route, if (isPlayer) Modifier.fillMaxSize() else Modifier.padding(padding)) {
-                    composable("home") { Dashboard(container, { navigate(nav, "live") }, { navigate(nav, "movies") }, { navigate(nav, "series") }, { navigate(nav, "guide") }, { channelId -> nav.navigate("player/$channelId") }) }
+                    composable("home") { Dashboard(container, { navigate(nav, "live") }, { navigate(nav, "movies") }, { navigate(nav, "series") }, { navigate(nav, "football") }, { navigate(nav, "guide") }, { channelId -> nav.navigate("player/$channelId") }) }
                     composable("live") { LiveScreen(container, { nav.navigate("player/$it") }, { nav.navigate("guide") }) }
                     composable("player/{id}") { entry -> VideoPlayer(entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable, container, enterPip, inPip, { nav.popBackStack() }) }
                     composable("movies") { MoviesScreen(container) { nav.navigate("movie/$it") } }
@@ -133,6 +133,7 @@ private enum class Destination(val route: String, val title: String, val icon: I
                     composable("series/{id}") { entry -> SeriesDetailScreen(entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable, container, { episode -> nav.navigate("episode/${episode.seriesId}/${Uri.encode(episode.episodeId)}/${Uri.encode(episode.extension ?: "mp4")}") }, { nav.popBackStack() }) }
                     composable("episode/{seriesId}/{episodeId}/{extension}") { entry -> VideoPlayer(entry.arguments?.getString("seriesId")?.toLongOrNull() ?: return@composable, container, enterPip, inPip, { nav.popBackStack() }, PlaybackType.EPISODE, Uri.decode(entry.arguments?.getString("episodeId").orEmpty()), Uri.decode(entry.arguments?.getString("extension").orEmpty())) }
                     composable("guide") { GuideScreen(container) { nav.navigate("player/$it") } }
+                    composable("football") { FootballScreen(container) { nav.navigate("player/$it") } }
                     composable("search") { FoundationScreen("Universal search", "Live channels are searchable now; Movies and Series will join this screen.", Icons.Default.Search) }
                     composable("favourites") { FoundationScreen("Favourites", "The local favourites database is ready for Channels, Movies and Series.", Icons.Default.Favorite) }
                     composable("settings") { SettingsScreen(container) }
@@ -149,6 +150,7 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
     openLive: () -> Unit,
     openMovies: () -> Unit,
     openSeries: () -> Unit,
+    openFootball: () -> Unit,
     openGuide: () -> Unit,
     resumeChannel: (Long) -> Unit
 ) {
@@ -192,9 +194,10 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 HomeAction("Movies", if (movieCount > 0) "$movieCount available" else "Your library", Icons.Default.Movie, openMovies, Modifier.weight(1f))
                 HomeAction("Series", if (seriesCount > 0) "$seriesCount available" else "Your library", Icons.Default.VideoLibrary, openSeries, Modifier.weight(1f))
-                HomeAction("Guide", "What's on now", Icons.Default.CalendarMonth, openGuide, Modifier.weight(1f))
+                HomeAction("Football", "Saturday fixtures", Icons.Default.SportsSoccer, openFootball, Modifier.weight(1f))
             }
         }
+        item { HomeAction("TV Guide", "What's on now", Icons.Default.CalendarMonth, openGuide, Modifier.fillMaxWidth()) }
         item {
             Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)) {
                 Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
