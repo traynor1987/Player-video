@@ -47,13 +47,13 @@ private enum class Destination(val route: String, val title: String, val icon: I
     Search("search", "Search", Icons.Default.Search), Favourites("favourites", "Favourites", Icons.Default.Favorite), Settings("settings", "Settings", Icons.Default.Settings)
 }
 
-@Composable fun PlayerApp(container: AppContainer, enterPip: () -> Unit) = PlayerTheme {
+@Composable fun PlayerApp(container: AppContainer, enterPip: (android.util.Rational) -> Unit, inPip: Boolean) = PlayerTheme {
     val setupFlow = remember(container.preferences) { container.preferences.setupComplete.map<Boolean, Boolean?> { it } }
     val setup by setupFlow.collectAsStateWithLifecycle(initialValue = null)
     Surface(Modifier.fillMaxSize()) {
         when (setup) { null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             false -> SetupWizard(container)
-            true -> MainShell(container, enterPip)
+            true -> MainShell(container, enterPip, inPip)
         }
     }
 }
@@ -106,21 +106,22 @@ private enum class Destination(val route: String, val title: String, val icon: I
     }
 }
 
-@Composable private fun MainShell(container: AppContainer, enterPip: () -> Unit) {
+@Composable private fun MainShell(container: AppContainer, enterPip: (android.util.Rational) -> Unit, inPip: Boolean) {
     val nav = rememberNavController(); val backStack by nav.currentBackStackEntryAsState(); val current = backStack?.destination?.route
     val context = LocalContext.current
     val isTv = remember { context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
     BoxWithConstraints {
         val rail = isTv || maxWidth >= 840.dp
+        val isPlayer = current?.startsWith("player/") == true
         Row(Modifier.fillMaxSize()) {
-            if (rail) NavigationRail(header = { Icon(Icons.Default.PlayCircle, "Player", Modifier.padding(16.dp).size(40.dp), tint = MaterialTheme.colorScheme.primary) }) {
+            if (rail && !isPlayer) NavigationRail(header = { Icon(Icons.Default.PlayCircle, "Player", Modifier.padding(16.dp).size(40.dp), tint = MaterialTheme.colorScheme.primary) }) {
                 Destination.entries.forEach { item -> NavigationRailItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }, label = { Text(item.title) }) }
             }
-            Scaffold(bottomBar = { if (!rail) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Movies, Destination.Search, Destination.Settings).forEach { item -> NavigationBarItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }, label = { Text(item.title) }) } } }) { padding ->
-                NavHost(nav, Destination.Home.route, Modifier.padding(padding)) {
+            Scaffold(bottomBar = { if (!rail && !isPlayer) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Movies, Destination.Search, Destination.Settings).forEach { item -> NavigationBarItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }) } } }) { padding ->
+                NavHost(nav, Destination.Home.route, if (isPlayer) Modifier.fillMaxSize() else Modifier.padding(padding)) {
                     composable("home") { Dashboard { navigate(nav, "live") } }
                     composable("live") { LiveScreen(container) { nav.navigate("player/$it") } }
-                    composable("player/{id}") { entry -> VideoPlayer(entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable, container, enterPip, { nav.popBackStack() }) }
+                    composable("player/{id}") { entry -> VideoPlayer(entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable, container, enterPip, inPip, { nav.popBackStack() }) }
                     composable("movies") { FoundationScreen("Movies", "Movie categories, metadata and resume data are architected next.", Icons.Default.Movie) }
                     composable("series") { FoundationScreen("Series", "Season, episode and independent progress support is next.", Icons.Default.VideoLibrary) }
                     composable("guide") { FoundationScreen("TV Guide", "XMLTV and the horizontally scrolling programme grid are next.", Icons.Default.CalendarMonth) }
