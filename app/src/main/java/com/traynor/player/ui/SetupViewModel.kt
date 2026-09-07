@@ -59,14 +59,14 @@ class LiveViewModel(private val container: AppContainer) : ViewModel() {
     } }
 }
 
-data class SourceRefreshUiState(val sourceId: Long? = null, val message: String? = null, val failed: Boolean = false)
+data class SourceRefreshUiState(val sourceId: Long? = null, val message: String? = null, val running: Boolean = false, val failed: Boolean = false)
 class SourceRefreshViewModel(private val container: AppContainer) : ViewModel() {
     private val mutable = MutableStateFlow(SourceRefreshUiState())
     val state = mutable.asStateFlow()
     fun refresh(sourceId: Long) = viewModelScope.launch {
-        mutable.value = SourceRefreshUiState(sourceId, "Refreshing source…")
-        runCatching { container.sourceRepository.refresh(sourceId).collect { mutable.value = SourceRefreshUiState(sourceId, it.message) } }
-            .onFailure { mutable.value = SourceRefreshUiState(sourceId, "Could not refresh this source", true) }
+        mutable.value = SourceRefreshUiState(sourceId, "Refreshing source…", running = true)
+        runCatching { container.sourceRepository.refresh(sourceId).collect { mutable.value = SourceRefreshUiState(sourceId, it.message, running = !it.complete) } }
+            .onFailure { mutable.value = SourceRefreshUiState(sourceId, "Could not refresh this source", failed = true) }
     }
     companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = SourceRefreshViewModel(container) as T
