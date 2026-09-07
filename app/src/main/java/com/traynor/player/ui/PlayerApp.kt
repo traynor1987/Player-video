@@ -154,7 +154,6 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
 ) {
     val sources by container.sourceRepository.sources().collectAsStateWithLifecycle(initialValue = emptyList())
     val activeSourceId by container.preferences.activeSourceId.collectAsStateWithLifecycle(initialValue = null)
-    val activeSourceId by container.preferences.activeSourceId.collectAsStateWithLifecycle(initialValue = null)
     val lastChannelId by container.preferences.lastChannelId.collectAsStateWithLifecycle(initialValue = null)
     val source = sources.firstOrNull { it.id == activeSourceId }
     val channelCount by remember(activeSourceId) { activeSourceId?.let { container.database.channelDao().observeCount(it) } ?: flowOf(0) }.collectAsStateWithLifecycle(initialValue = 0)
@@ -222,6 +221,7 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
 
 @Composable private fun SettingsScreen(container: AppContainer) {
     val sources by container.sourceRepository.sources().collectAsStateWithLifecycle(initialValue = emptyList())
+    val activeSourceId by container.preferences.activeSourceId.collectAsStateWithLifecycle(initialValue = null)
     val updateModel: UpdateViewModel = viewModel(factory = UpdateViewModel.factory(container))
     val updateState by updateModel.state.collectAsStateWithLifecycle()
     val refreshModel: SourceRefreshViewModel = viewModel(factory = SourceRefreshViewModel.factory(container))
@@ -281,17 +281,56 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
 
 @Composable private fun AddSourceDialog(container: AppContainer, dismiss: () -> Unit) {
     var type by remember { mutableStateOf(SourceType.XTREAM) }
-    var name by remember { mutableStateOf("") }; var server by remember { mutableStateOf("") }; var username by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var playlist by remember { mutableStateOf("") }
-    val model: SetupViewModel = viewModel(factory = SetupViewModel.factory(container)); val state by model.state.collectAsStateWithLifecycle()
-    AlertDialog(onDismissRequest = { if (!state.busy) dismiss() }, title = { Text("Add TV source") }, text = {
+    var name by remember { mutableStateOf("") }
+    var server by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var playlist by remember { mutableStateOf("") }
+    val model: SetupViewModel = viewModel(factory = SetupViewModel.factory(container))
+    val state by model.state.collectAsStateWithLifecycle()
+    val canSubmit = !state.busy && name.isNotBlank() && (
+        if (type == SourceType.XTREAM) server.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+        else playlist.isNotBlank()
+    )
+
+    LaunchedEffect(state.complete) {
+        if (state.complete) dismiss()
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!state.busy) dismiss() },
+        title = { Text("Add TV source") },
+        text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { FilterChip(type == SourceType.XTREAM, { type = SourceType.XTREAM }, { Text("Xtream") }); FilterChip(type == SourceType.REMOTE_M3U, { type = SourceType.REMOTE_M3U }, { Text("M3U URL") }) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = type == SourceType.XTREAM, onClick = { type = SourceType.XTREAM }, label = { Text("Xtream") })
+                FilterChip(selected = type == SourceType.REMOTE_M3U, onClick = { type = SourceType.REMOTE_M3U }, label = { Text("M3U URL") })
+            }
             OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Profile name") }, singleLine = true)
-            if (type == SourceType.XTREAM) { OutlinedTextField(server, { server = it }, Modifier.fillMaxWidth(), label = { Text("Server URL") }, singleLine = true); OutlinedTextField(username, { username = it }, Modifier.fillMaxWidth(), label = { Text("Username") }, singleLine = true); OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation()) } else OutlinedTextField(playlist, { playlist = it }, Modifier.fillMaxWidth(), label = { Text("Playlist URL") }, singleLine = true)
-            state.status?.let { Text(it, color = MaterialTheme.colorScheme.primary); if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth()) }; state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (type == SourceType.XTREAM) {
+                OutlinedTextField(server, { server = it }, Modifier.fillMaxWidth(), label = { Text("Server URL") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                OutlinedTextField(username, { username = it }, Modifier.fillMaxWidth(), label = { Text("Username") }, singleLine = true)
+                OutlinedTextField(password, { password = it }, Modifier.fillMaxWidth(), label = { Text("Password") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+            } else {
+                OutlinedTextField(playlist, { playlist = it }, Modifier.fillMaxWidth(), label = { Text("Playlist URL") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+            }
+            state.status?.let {
+                Text(it, color = MaterialTheme.colorScheme.primary)
+                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
-    }, confirmButton = { Button({ model.testAndSave(SourceDraft(name, type, server, username, password, playlist)) }, enabled = !state.busy && name.isNotBlank() && if (type == SourceType.XTREAM) server.isNotBlank() && username.isNotBlank() && password.isNotBlank() else playlist.isNotBlank()) { Text("Test & add") } }, dismissButton = { TextButton(dismiss, enabled = !state.busy) { Text("Cancel") })
-    LaunchedEffect(state.complete) { if (state.complete) dismiss() }
+        },
+        confirmButton = {
+            Button(
+                onClick = { model.testAndSave(SourceDraft(name, type, server, username, password, playlist)) },
+                enabled = canSubmit
+            ) { Text("Test & add") }
+        },
+        dismissButton = {
+            TextButton(onClick = dismiss, enabled = !state.busy) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable private fun UpdateSummary(title: String, detail: String, checkedAt: Long?, color: Color = MaterialTheme.colorScheme.onSurface) {
