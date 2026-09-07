@@ -2,6 +2,8 @@
 package com.traynor.player.ui
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -146,11 +148,30 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
 
 @Composable private fun SettingsScreen(container: AppContainer) {
     val sources by container.sourceRepository.sources().collectAsStateWithLifecycle(initialValue = emptyList())
+    val updateModel: UpdateViewModel = viewModel(factory = UpdateViewModel.factory(container))
+    val updateState by updateModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { Text("Settings", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold) }
         item { Text("Sources", style = MaterialTheme.typography.titleLarge) }
         items(sources, key = { it.id }) { source -> ListItem({ Text(source.name) }, supportingContent = { Text("${source.type.name.replace('_',' ')} • ${source.lastRefreshedAt?.let { "Last refreshed ${java.text.DateFormat.getDateTimeInstance().format(it)}" } ?: "Not refreshed"}") }, leadingContent = { Icon(Icons.Default.Storage, null) }, trailingContent = { Icon(Icons.Default.ChevronRight, null) }, modifier = Modifier.clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) }
         item { Text("Playback", style = MaterialTheme.typography.titleLarge); ListItem({ Text("Media3 / ExoPlayer") }, supportingContent = { Text("Hardware decoding, HLS, DASH and progressive playback") }, leadingContent = { Icon(Icons.Default.PlayCircle, null) }) }
+        item {
+            Text("App updates", style = MaterialTheme.typography.titleLarge)
+            ElevatedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Signed APK releases", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    when (val state = updateState) {
+                        UpdateUiState.Idle -> Text("Installed: v${BuildConfig.VERSION_NAME}. Check GitHub for an official signed update.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        UpdateUiState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Checking GitHub…") }
+                        UpdateUiState.UpToDate -> Text("You’re up to date.", color = MaterialTheme.colorScheme.primary)
+                        UpdateUiState.Unavailable -> Text("Couldn’t check for an update. Your current app is unchanged.", color = MaterialTheme.colorScheme.error)
+                        is UpdateUiState.Available -> { Text("Player v${state.update.version} is ready.", color = MaterialTheme.colorScheme.primary); Button({ context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(state.update.asset.downloadUrl))) }) { Icon(Icons.Default.SystemUpdate, null); Spacer(Modifier.width(8.dp)); Text("Download signed APK") } }
+                    }
+                    if (updateState !is UpdateUiState.Checking && updateState !is UpdateUiState.Available) OutlinedButton(updateModel::check) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Check for updates") }
+                }
+            }
+        }
         item { Text("Storage", style = MaterialTheme.typography.titleLarge); OutlinedButton({ /* confirmation UI is added with history screen */ }) { Icon(Icons.Default.DeleteSweep, null); Spacer(Modifier.width(8.dp)); Text("Clear history") } }
         item { Text("About", style = MaterialTheme.typography.titleLarge); Text("Player ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\nNative Android • com.traynor.player", color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
