@@ -79,7 +79,8 @@ class SourceRepository(
         val streams = api.streams(endpoint, user, pass, "get_live_streams").body() ?: error("Live TV library unavailable")
         streams.chunked(500).forEachIndexed { index, chunk ->
             channelDao.upsertAll(chunk.map { item -> ChannelEntity(sourceId = source.id, externalId = item.id.toString(), name = item.name,
-                streamUrlEncrypted = cipher.encrypt(XtreamUrls.live(server, user, pass, item.id, item.extension)), logoUrl = item.icon,
+                streamUrlEncrypted = cipher.encrypt(item.directSource.asPlayableHttpUrl()
+                    ?: XtreamUrls.live(server, user, pass, item.id, item.extension)), logoUrl = item.icon,
                 category = categories[item.categoryId] ?: "Uncategorised", tvgId = item.epgId, searchText = item.name.lowercase()) })
             emit(ImportProgress((index + 1) * 500.coerceAtMost(streams.size), "Importing Live TV"))
         }
@@ -100,5 +101,30 @@ class SourceRepository(
             tvgId = entry.tvgId, searchText = "${entry.name} ${entry.tvgName.orEmpty()}".lowercase()) }) }
     }
 
-    suspend fun playableUrl(channelId: Long): String? = channelDao.get(channelId)?.let { cipher.decrypt(it.streamUrlEncrypted) }
+    suspend fun playableUrls(channelId: Long): List<String> = channelDao.get(channelId)?.let {
+        streamCandidates(cipher.decrypt(it.streamUrlEncrypted))
+    }.orEmpty()
+
+    private fun String?.asPlayableHttpUrl(): String? = this?.trim()?.takeIf {
+        runCatching {
+            val scheme = java.net.URI(it).scheme
+            scheme.equals("http", true) || scheme.equals("https", true)
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Xtream panels occasionally advertise .ts while serving the same live path
+     * as HLS, or the reverse. Retrying the matching alternate is safe and avoids
+     * any stream discovery: it only reuses the user's own authorised endpoint.
+     */
+    private fun streamCandidates(primary: String): List<String> {
+        val path = primary.substringBefore('?')
+        val query = primary.removePrefix(path)
+        val alternate = when {
+            path.endsWith(".ts", ignoreCase = true) -> path.dropLast(3) + ".m3u8" + query
+            path.endsWith(".m3u8", ignoreCase = true) -> path.dropLast(5) + ".ts" + query
+            else -> null
+        }
+        return listOfNotNull(primary, alternate).distinct()
+    }
 }
