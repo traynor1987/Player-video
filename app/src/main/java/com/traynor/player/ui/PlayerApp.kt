@@ -47,7 +47,8 @@ private enum class Destination(val route: String, val title: String, val icon: I
 }
 
 @Composable fun PlayerApp(container: AppContainer, enterPip: () -> Unit) = PlayerTheme {
-    val setup by container.preferences.setupComplete.map<Boolean, Boolean?> { it }.collectAsStateWithLifecycle(initialValue = null)
+    val setupFlow = remember(container.preferences) { container.preferences.setupComplete.map<Boolean, Boolean?> { it } }
+    val setup by setupFlow.collectAsStateWithLifecycle(initialValue = null)
     Surface(Modifier.fillMaxSize()) {
         when (setup) { null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             false -> SetupWizard(container)
