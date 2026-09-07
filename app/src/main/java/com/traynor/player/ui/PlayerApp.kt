@@ -112,9 +112,9 @@ private enum class Destination(val route: String, val title: String, val icon: I
         val rail = isTv || maxWidth >= 840.dp
         Row(Modifier.fillMaxSize()) {
             if (rail) NavigationRail(header = { Icon(Icons.Default.PlayCircle, "Player", Modifier.padding(16.dp).size(40.dp), tint = MaterialTheme.colorScheme.primary) }) {
-                Destination.entries.forEach { item -> NavigationRailItem(current == item.route, { navigate(nav, item.route) }, { Icon(item.icon, item.title) }, { Text(item.title) }) }
+                Destination.entries.forEach { item -> NavigationRailItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }, label = { Text(item.title) }) }
             }
-            Scaffold(bottomBar = { if (!rail) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Movies, Destination.Search, Destination.Settings).forEach { item -> NavigationBarItem(current == item.route, { navigate(nav, item.route) }, { Icon(item.icon, item.title) }, { Text(item.title) }) } } }) { padding ->
+            Scaffold(bottomBar = { if (!rail) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Movies, Destination.Search, Destination.Settings).forEach { item -> NavigationBarItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }, label = { Text(item.title) }) } } }) { padding ->
                 NavHost(nav, Destination.Home.route, Modifier.padding(padding)) {
                     composable("home") { Dashboard { navigate(nav, "live") } }
                     composable("live") { LiveScreen(container) { nav.navigate("player/$it") } }
