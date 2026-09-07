@@ -10,7 +10,7 @@ import retrofit2.http.Url
 @JsonClass(generateAdapter = true)
 data class XtreamAuthResponse(@Json(name = "user_info") val userInfo: XtreamUserInfo? = null)
 @JsonClass(generateAdapter = true)
-data class XtreamUserInfo(val username: String? = null, val status: String? = null, @Json(name = "auth") val authenticated: Int? = null)
+data class XtreamUserInfo(val username: String? = null, val status: String? = null, @Json(name = "auth") val authenticated: String? = null)
 @JsonClass(generateAdapter = true)
 data class XtreamCategory(@Json(name = "category_id") val id: String, @Json(name = "category_name") val name: String)
 @JsonClass(generateAdapter = true)
@@ -35,11 +35,15 @@ interface XtreamApi {
 
 object XtreamUrls {
     fun normaliseServer(raw: String): String {
-        val value = raw.trim().trimEnd('/')
-        require(value.startsWith("http://") || value.startsWith("https://")) { "Server URL must start with http:// or https://" }
-        val uri = java.net.URI(value)
+        val value = raw.trim()
+        require(value.isNotBlank()) { "Server URL is required" }
+        val withScheme = if (value.startsWith("http://") || value.startsWith("https://")) value else "https://$value"
+        val uri = java.net.URI(withScheme)
         require(!uri.host.isNullOrBlank() && uri.userInfo == null) { "Enter a valid server URL without embedded credentials" }
-        return value
+        // Accept either the bare server URL or a full player_api.php URL, but
+        // never retain pasted query parameters or embedded credentials.
+        val path = uri.path.orEmpty().trimEnd('/').replace(Regex("/(player_api|get|xmltv)\\.php$", RegexOption.IGNORE_CASE), "")
+        return java.net.URI(uri.scheme, null, uri.host, uri.port, path.ifBlank { null }, null, null).toString().trimEnd('/')
     }
     fun api(server: String) = "${normaliseServer(server)}/player_api.php"
     fun live(server: String, user: String, password: String, id: Int, extension: String? = null): String =
