@@ -2,7 +2,8 @@ package com.traynor.player.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -27,9 +28,6 @@ import java.util.Date
 @Composable fun GuideScreen(container: AppContainer, play: (Long) -> Unit) {
     val model: GuideViewModel = viewModel(factory = GuideViewModel.factory(container))
     val state by model.state.collectAsStateWithLifecycle()
-    LaunchedEffect(state.selectedChannel?.id, state.channels.firstOrNull()?.id) {
-        if (state.selectedChannel == null) state.channels.firstOrNull()?.let { model.select(it.id) }
-    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
         if (state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -38,20 +36,9 @@ import java.util.Date
             ChannelPicker(state.channels, state.selectedChannel?.id, model::select, Modifier.width(330.dp).fillMaxHeight())
             ProgrammePane(state, play, Modifier.weight(1f).fillMaxHeight())
         } else Column(Modifier.fillMaxSize()) {
-            GuideChannelStrip(state.channels, state.selectedChannel?.id, model::select)
+            ChannelPicker(state.channels, state.selectedChannel?.id, model::select, Modifier.heightIn(max = 250.dp).fillMaxWidth())
             ProgrammePane(state, play, Modifier.weight(1f))
         }
-    }
-}
-
-@Composable private fun GuideChannelStrip(channels: List<ChannelEntity>, selected: Long?, select: (Long) -> Unit) = LazyRow(
-    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).padding(horizontal = 16.dp, vertical = 12.dp),
-    horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically
-) {
-    item { Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary) }
-    item { Text("TV Guide", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-    items(channels, key = { it.id }) { channel ->
-        FilterChip(selected = channel.id == selected, onClick = { select(channel.id) }, label = { Text(channel.name, maxLines = 1, overflow = TextOverflow.Ellipsis) })
     }
 }
 
