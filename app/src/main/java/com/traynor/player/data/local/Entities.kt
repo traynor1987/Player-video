@@ -103,6 +103,8 @@ data class HistoryEntity(
     fun observePage(sourceId: Long, category: String?, query: String, limit: Int = 250, offset: Int = 0): Flow<List<ChannelEntity>>
     @Query("SELECT * FROM channels WHERE id=:id") suspend fun get(id: Long): ChannelEntity?
     @Query("SELECT * FROM channels WHERE id=:id") fun observe(id: Long): Flow<ChannelEntity?>
+    @Query("SELECT * FROM channels WHERE sourceId=:sourceId AND (lower(name) LIKE '%sport%' OR lower(category) LIKE '%sport%' OR lower(name) LIKE '%football%') ORDER BY name LIMIT :limit")
+    suspend fun sportChannels(sourceId: Long, limit: Int = 80): List<ChannelEntity>
     @Query("SELECT COUNT(*) FROM channels WHERE sourceId=:sourceId") fun observeCount(sourceId: Long): Flow<Int>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(items: List<ChannelEntity>)
     @Query("DELETE FROM channels WHERE sourceId=:sourceId") suspend fun deleteForSource(sourceId: Long)
