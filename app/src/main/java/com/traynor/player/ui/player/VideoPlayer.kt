@@ -2,6 +2,10 @@
 
 package com.traynor.player.ui.player
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.util.Rational
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -17,6 +21,8 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.*
 import androidx.media3.exoplayer.ExoPlayer
@@ -30,11 +36,12 @@ import com.traynor.player.AppContainer
 import com.traynor.player.ui.LiveViewModel
 import kotlinx.coroutines.delay
 
-@Composable fun VideoPlayer(channelId: Long, container: AppContainer, enterPip: () -> Unit, close: () -> Unit) {
+@Composable fun VideoPlayer(channelId: Long, container: AppContainer, enterPip: (Rational) -> Unit, inPip: Boolean, close: () -> Unit) {
     val context = LocalContext.current; val model: LiveViewModel = viewModel(factory = LiveViewModel.factory(container))
     var urls by remember { mutableStateOf(emptyList<String>()) }; var candidateIndex by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }; var controls by remember { mutableStateOf(true) }; var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var buffering by remember { mutableStateOf(false) }; var ready by remember { mutableStateOf(false) }; var attempt by remember { mutableIntStateOf(0) }
+    var pipAspectRatio by remember { mutableStateOf(Rational(16, 9)) }
     val httpFactory = remember { DefaultHttpDataSource.Factory().setUserAgent("Player/1.0 (Android)").setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15_000).setReadTimeoutMs(45_000) }
     val player = remember { ExoPlayer.Builder(context, DefaultRenderersFactory(context).setEnableDecoderFallback(true))
         .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
@@ -52,6 +59,9 @@ import kotlinx.coroutines.delay
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) { buffering = state == Player.STATE_BUFFERING; if (state == Player.STATE_READY) ready = true; if (state == Player.STATE_ENDED) error = "This live stream ended" }
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) pipAspectRatio = Rational(videoSize.width, videoSize.height)
+            }
             override fun onPlayerError(playerError: PlaybackException) {
                 buffering = false
                 if (!ready && candidateIndex < urls.lastIndex) {
@@ -66,6 +76,14 @@ import kotlinx.coroutines.delay
             }
         }
         player.addListener(listener); onDispose { player.removeListener(listener); player.release() }
+    }
+    DisposableEffect(Unit) {
+        val activity = context.findActivity()
+        val window = activity?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        controller?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller?.hide(WindowInsetsCompat.Type.systemBars())
+        onDispose { controller?.show(WindowInsetsCompat.Type.systemBars()) }
     }
     Box(Modifier.fillMaxSize().background(Color.Black).focusable().onPreviewKeyEvent { event ->
         if (event.type != KeyEventType.KeyDown) false else when (event.key) {
@@ -91,18 +109,24 @@ import kotlinx.coroutines.delay
             update = { it.resizeMode = resizeMode },
             modifier = Modifier.fillMaxSize()
         )
-        if (buffering && error == null) Row(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .6f), MaterialTheme.shapes.large).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White); Spacer(Modifier.width(12.dp)); Text(if (candidateIndex > 0) "Trying compatible stream…" else "Buffering stream…", color = Color.White) }
-        AnimatedVisibility(controls) { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .35f))) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text("Live TV", color = Color.White, style = MaterialTheme.typography.titleLarge); Text("Live stream", color = Color.White.copy(alpha = .75f)) } }
+        if (!inPip && buffering && error == null) Row(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .6f), MaterialTheme.shapes.large).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White); Spacer(Modifier.width(12.dp)); Text(if (candidateIndex > 0) "Trying compatible stream…" else "Buffering stream…", color = Color.White) }
+        if (!inPip) AnimatedVisibility(controls) { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .35f))) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text("Live TV", color = Color.White, style = MaterialTheme.typography.titleLarge); Text("Live stream", color = Color.White.copy(alpha = .75f)) } }
             Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 IconButton({ /* previous channel foundation */ }) { Icon(Icons.Default.SkipPrevious, "Previous channel", tint = Color.White) }
                 FilledIconButton({ if (player.isPlaying) player.pause() else player.play() }, Modifier.size(64.dp)) { Icon(if (player.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", Modifier.size(36.dp)) }
                 IconButton({ /* next channel foundation */ }) { Icon(Icons.Default.SkipNext, "Next channel", tint = Color.White) }
                 IconButton({ resizeMode = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT }) { Icon(Icons.Default.AspectRatio, "Fit or fill", tint = Color.White) }
-                IconButton(enterPip) { Icon(Icons.Default.PictureInPictureAlt, "Picture in Picture", tint = Color.White) }
+                IconButton({ controls = false; enterPip(pipAspectRatio) }) { Icon(Icons.Default.PictureInPictureAlt, "Picture in Picture", tint = Color.White) }
             }
         } }
-        error?.let { message -> Card(Modifier.align(Alignment.Center).padding(24.dp)) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(44.dp)); Text(message, style = MaterialTheme.typography.titleMedium); Button({ candidateIndex = 0; attempt++; error = null }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Retry") } } } }
+        if (!inPip) error?.let { message -> Card(Modifier.align(Alignment.Center).padding(24.dp)) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(44.dp)); Text(message, style = MaterialTheme.typography.titleMedium); Button({ candidateIndex = 0; attempt++; error = null }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Retry") } } } }
     }
+}
+
+private fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private fun String.guessMimeType(): String? = substringBefore('?').lowercase().let { path -> when {
