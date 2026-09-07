@@ -67,10 +67,14 @@ class ApkUpdateInstaller(private val context: Context, private val client: OkHtt
     private fun packageInfo(file: File): PackageInfo? = if (Build.VERSION.SDK_INT >= 33) context.packageManager.getPackageArchiveInfo(file.path, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())) else @Suppress("DEPRECATION") context.packageManager.getPackageArchiveInfo(file.path, PackageManager.GET_SIGNING_CERTIFICATES)
     private fun installedPackage(): PackageInfo = if (Build.VERSION.SDK_INT >= 33) context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())) else @Suppress("DEPRECATION") context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
     private fun sameSigner(archive: PackageInfo, installed: PackageInfo): Boolean {
-        val archiveSigners = archive.signingInfo?.apkContentsSigners.orEmpty()
-        val installedSigners = installed.signingInfo?.apkContentsSigners.orEmpty()
-        return archiveSigners.isNotEmpty() && archiveSigners.any { candidate -> installedSigners.any { candidate.toByteArray().contentEquals(it.toByteArray()) } }
+        val archiveSigners = signingCertificates(archive)
+        val installedSigners = signingCertificates(installed)
+        return archiveSigners.isNotEmpty() && archiveSigners.any { candidate -> installedSigners.any { candidate.contentEquals(it) } }
     }
+    private fun signingCertificates(info: PackageInfo): List<ByteArray> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        info.signingInfo?.apkContentsSigners.orEmpty().map { it.toByteArray() }
+    } else legacyCertificates(info)
+    @Suppress("DEPRECATION") private fun legacyCertificates(info: PackageInfo): List<ByteArray> = info.signatures.orEmpty().map { it.toByteArray() }
     private fun PackageInfo.versionCodeLong(): Long = if (Build.VERSION.SDK_INT >= 28) longVersionCode else @Suppress("DEPRECATION") versionCode.toLong()
     private fun File.sha256(): String = inputStream().use { input ->
         val digest = MessageDigest.getInstance("SHA-256"); val buffer = ByteArray(DEFAULT_BUFFER_SIZE); var read: Int
