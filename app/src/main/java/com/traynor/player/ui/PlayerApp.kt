@@ -42,7 +42,7 @@ import com.traynor.player.data.local.ChannelEntity
 import com.traynor.player.ui.player.VideoPlayer
 import com.traynor.player.ui.player.PlaybackType
 import com.traynor.player.ui.theme.PlayerTheme
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 private enum class Destination(val route: String, val title: String, val icon: ImageVector) {
@@ -123,7 +123,7 @@ private enum class Destination(val route: String, val title: String, val icon: I
             }
             Scaffold(bottomBar = { if (!rail && !isPlayer) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Movies, Destination.Search, Destination.Settings).forEach { item -> NavigationBarItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }) } } }) { padding ->
                 NavHost(nav, Destination.Home.route, if (isPlayer) Modifier.fillMaxSize() else Modifier.padding(padding)) {
-                    composable("home") { Dashboard { navigate(nav, "live") } }
+                    composable("home") { Dashboard(container, { navigate(nav, "live") }, { navigate(nav, "movies") }, { navigate(nav, "series") }, { navigate(nav, "guide") }, { channelId -> nav.navigate("player/$channelId") }) }
                     composable("live") { LiveScreen(container, { nav.navigate("player/$it") }, { nav.navigate("guide") }) }
                     composable("player/{id}") { entry -> VideoPlayer(entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable, container, enterPip, inPip, { nav.popBackStack() }) }
                     composable("movies") { MoviesScreen(container) { nav.navigate("movie/$it") } }
@@ -144,11 +144,76 @@ private enum class Destination(val route: String, val title: String, val icon: I
 
 private fun navigate(nav: androidx.navigation.NavHostController, route: String) = nav.navigate(route) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true }
 
-@Composable private fun Dashboard(openLive: () -> Unit) {
+@Composable private fun Dashboard(
+    container: AppContainer,
+    openLive: () -> Unit,
+    openMovies: () -> Unit,
+    openSeries: () -> Unit,
+    openGuide: () -> Unit,
+    resumeChannel: (Long) -> Unit
+) {
+    val sources by container.sourceRepository.sources().collectAsStateWithLifecycle(initialValue = emptyList())
+    val activeSourceId by container.preferences.activeSourceId.collectAsStateWithLifecycle(initialValue = null)
+    val lastChannelId by container.preferences.lastChannelId.collectAsStateWithLifecycle(initialValue = null)
+    val source = sources.firstOrNull { it.id == activeSourceId }
+    val channelCount by remember(activeSourceId) { activeSourceId?.let { container.database.channelDao().observeCount(it) } ?: flowOf(0) }.collectAsStateWithLifecycle(initialValue = 0)
+    val movieCount by remember(activeSourceId) { activeSourceId?.let { container.database.movieDao().observeCount(it) } ?: flowOf(0) }.collectAsStateWithLifecycle(initialValue = 0)
+    val seriesCount by remember(activeSourceId) { activeSourceId?.let { container.database.seriesDao().observeCount(it) } ?: flowOf(0) }.collectAsStateWithLifecycle(initialValue = 0)
+    val lastChannel by remember(lastChannelId) { lastChannelId?.let { container.database.channelDao().observe(it) } ?: flowOf(null) }.collectAsStateWithLifecycle(initialValue = null)
+    val greeting = remember { when (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) { in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening" } }
+
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        item { Text("Good evening", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold); Text("Your television, your sources, on your device.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
-        item { ElevatedCard(onClick = openLive, Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) { Row(Modifier.padding(26.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.LiveTv, null, Modifier.size(46.dp), tint = MaterialTheme.colorScheme.primary); Spacer(Modifier.width(20.dp)); Column(Modifier.weight(1f)) { Text("Live TV", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold); Text("Browse channels and start watching") }; Icon(Icons.Default.PlayArrow, null, Modifier.size(36.dp)) } } }
-        item { Text("Continue Watching and Recently Viewed appear here once you watch something.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(greeting, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                Text(source?.let { "${it.name} is ready on this device." } ?: "Your television, your sources, on your device.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            ElevatedCard(onClick = openLive, Modifier.fillMaxWidth(), shape = RoundedCornerShape(26.dp), colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Row(Modifier.padding(26.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(Modifier.size(64.dp), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer) { Icon(Icons.Default.LiveTv, null, Modifier.padding(14.dp), tint = MaterialTheme.colorScheme.primary) }
+                    Spacer(Modifier.width(20.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Live TV", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                        Text(if (channelCount > 0) "$channelCount channels ready to watch" else "Browse channels and start watching", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(Icons.Default.ArrowForward, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+        if (lastChannel != null) item {
+            FilledTonalButton({ resumeChannel(lastChannel!!.id) }, Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Resume ${lastChannel!!.name}", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
+        }
+        item { Text("Explore", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                HomeAction("Movies", if (movieCount > 0) "$movieCount available" else "Your library", Icons.Default.Movie, openMovies, Modifier.weight(1f))
+                HomeAction("Series", if (seriesCount > 0) "$seriesCount available" else "Your library", Icons.Default.VideoLibrary, openSeries, Modifier.weight(1f))
+                HomeAction("Guide", "What's on now", Icons.Default.CalendarMonth, openGuide, Modifier.weight(1f))
+            }
+        }
+        item {
+            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)) {
+                Row(Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Tune, null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Your sources and viewing history stay on this device.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun HomeAction(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    ElevatedCard(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(18.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+            Text(title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
     }
 }
 

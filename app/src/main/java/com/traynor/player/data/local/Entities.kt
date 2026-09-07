@@ -102,6 +102,8 @@ data class HistoryEntity(
     @Query("SELECT * FROM channels WHERE sourceId=:sourceId AND (:category IS NULL OR category=:category) AND searchText LIKE '%' || lower(:query) || '%' ORDER BY name LIMIT :limit OFFSET :offset")
     fun observePage(sourceId: Long, category: String?, query: String, limit: Int = 250, offset: Int = 0): Flow<List<ChannelEntity>>
     @Query("SELECT * FROM channels WHERE id=:id") suspend fun get(id: Long): ChannelEntity?
+    @Query("SELECT * FROM channels WHERE id=:id") fun observe(id: Long): Flow<ChannelEntity?>
+    @Query("SELECT COUNT(*) FROM channels WHERE sourceId=:sourceId") fun observeCount(sourceId: Long): Flow<Int>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(items: List<ChannelEntity>)
     @Query("DELETE FROM channels WHERE sourceId=:sourceId") suspend fun deleteForSource(sourceId: Long)
 }
@@ -110,6 +112,7 @@ data class HistoryEntity(
     @Query("SELECT DISTINCT category FROM movies WHERE sourceId=:sourceId ORDER BY category") fun categories(sourceId: Long): Flow<List<String>>
     @Query("SELECT * FROM movies WHERE sourceId=:sourceId AND (:category IS NULL OR category=:category) AND searchText LIKE '%' || lower(:query) || '%' ORDER BY title LIMIT :limit OFFSET :offset") fun observePage(sourceId: Long, category: String?, query: String, limit: Int = 250, offset: Int = 0): Flow<List<MovieEntity>>
     @Query("SELECT * FROM movies WHERE id=:id") suspend fun get(id: Long): MovieEntity?
+    @Query("SELECT COUNT(*) FROM movies WHERE sourceId=:sourceId") fun observeCount(sourceId: Long): Flow<Int>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(items: List<MovieEntity>)
     @Query("DELETE FROM movies WHERE sourceId=:sourceId") suspend fun deleteForSource(sourceId: Long)
 }
@@ -118,6 +121,7 @@ data class HistoryEntity(
     @Query("SELECT DISTINCT category FROM series WHERE sourceId=:sourceId ORDER BY category") fun categories(sourceId: Long): Flow<List<String>>
     @Query("SELECT * FROM series WHERE sourceId=:sourceId AND (:category IS NULL OR category=:category) AND searchText LIKE '%' || lower(:query) || '%' ORDER BY title LIMIT :limit OFFSET :offset") fun observePage(sourceId: Long, category: String?, query: String, limit: Int = 250, offset: Int = 0): Flow<List<SeriesEntity>>
     @Query("SELECT * FROM series WHERE id=:id") suspend fun get(id: Long): SeriesEntity?
+    @Query("SELECT COUNT(*) FROM series WHERE sourceId=:sourceId") fun observeCount(sourceId: Long): Flow<Int>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(items: List<SeriesEntity>)
     @Query("DELETE FROM series WHERE sourceId=:sourceId") suspend fun deleteForSource(sourceId: Long)
 }

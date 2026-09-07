@@ -21,6 +21,7 @@ class PlayerPreferences(private val context: Context, private val cipher: Creden
     }
     val setupComplete = context.dataStore.data.map { it[Keys.setupComplete] ?: false }
     val activeSourceId = context.dataStore.data.map { it[Keys.activeSourceId] }
+    val lastChannelId = context.dataStore.data.map { it[Keys.lastChannelId] }
     val playLastOnLaunch = context.dataStore.data.map { it[Keys.playLastOnLaunch] ?: false }
     val tmdbApiKey = context.dataStore.data.map { preferences ->
         preferences[Keys.tmdbKeyEncrypted]?.let { runCatching { cipher.decrypt(it) }.getOrNull() }.orEmpty()

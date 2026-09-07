@@ -7,6 +7,8 @@ import com.traynor.player.AppContainer
 import com.traynor.player.core.model.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class SetupUiState(val busy: Boolean = false, val status: String? = null, val error: String? = null, val complete: Boolean = false)
 
@@ -43,17 +45,38 @@ class SetupViewModel(private val container: AppContainer) : ViewModel() {
     } }
 }
 
-data class LiveUiState(val sourceId: Long? = null, val categories: List<String> = emptyList(), val selectedCategory: String? = null, val channels: List<com.traynor.player.data.local.ChannelEntity> = emptyList(), val query: String = "", val loading: Boolean = true)
+data class ProgrammePreview(val title: String? = null, val loading: Boolean = false, val supplied: Boolean = false)
+data class LiveUiState(val sourceId: Long? = null, val categories: List<String> = emptyList(), val selectedCategory: String? = null, val channels: List<com.traynor.player.data.local.ChannelEntity> = emptyList(), val query: String = "", val loading: Boolean = true, val programmePreviews: Map<Long, ProgrammePreview> = emptyMap())
 class LiveViewModel(private val container: AppContainer) : ViewModel() {
     private val category = MutableStateFlow<String?>(null); private val query = MutableStateFlow("")
-    val state: StateFlow<LiveUiState> = container.preferences.activeSourceId.filterNotNull().flatMapLatest { sourceId ->
+    private val previews = MutableStateFlow<Map<Long, ProgrammePreview>>(emptyMap())
+    private val requestedPreviews = mutableSetOf<Long>()
+    private val epgRequests = Semaphore(3)
+    private val libraryState = container.preferences.activeSourceId.filterNotNull().flatMapLatest { sourceId ->
         combine(container.database.channelDao().categories(sourceId), category, query) { cats, cat, q -> Triple(cats, cat, q) }
             .flatMapLatest { (cats, cat, q) -> container.database.channelDao().observePage(sourceId, cat, q).map { LiveUiState(sourceId, cats, cat, it, q, false) } }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LiveUiState())
+    }
+    val state: StateFlow<LiveUiState> = combine(libraryState, previews) { library, programmePreviews -> library.copy(programmePreviews = programmePreviews) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LiveUiState())
     fun selectCategory(value: String?) { category.value = value }
     fun search(value: String) { query.value = value }
     suspend fun playableUrls(id: Long) = container.sourceRepository.playableUrls(id)
     fun remember(id: Long) = viewModelScope.launch { container.preferences.rememberChannel(id) }
+    fun loadProgrammePreview(channelId: Long) {
+        if (!requestedPreviews.add(channelId)) return
+        previews.update { it + (channelId to ProgrammePreview(loading = true)) }
+        viewModelScope.launch {
+            val programme = epgRequests.withPermit {
+                runCatching { container.sourceRepository.guideForChannel(channelId) }.getOrDefault(emptyList()).let { listings ->
+                    val now = System.currentTimeMillis()
+                    listings.firstOrNull { it.startMillis != null && it.endMillis != null && it.startMillis <= now && it.endMillis > now }
+                        ?: listings.firstOrNull { it.startMillis != null && it.startMillis > now }
+                        ?: listings.firstOrNull()
+                }
+            }
+            previews.update { it + (channelId to ProgrammePreview(title = programme?.title, supplied = programme != null)) }
+        }
+    }
     companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = LiveViewModel(container) as T
     } }

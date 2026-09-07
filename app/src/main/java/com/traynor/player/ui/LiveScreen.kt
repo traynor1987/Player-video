@@ -56,15 +56,16 @@ import com.traynor.player.data.local.ChannelEntity
     OutlinedTextField(state.query, model::search, Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Default.Search, null) }, label = { Text("Search channels") }, singleLine = true)
     Spacer(Modifier.height(12.dp))
     if (state.channels.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(Icons.Default.LiveTv, null, Modifier.size(52.dp)); Text(if (state.query.isBlank()) "This category is empty" else "No matching channels") } }
-    else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(state.channels, key = { it.id }) { channel -> ChannelRow(channel) { model.remember(channel.id); play(channel.id) } } }
+    else LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) { items(state.channels, key = { it.id }) { channel -> ChannelRow(channel, state.programmePreviews[channel.id], { model.loadProgrammePreview(channel.id) }) { model.remember(channel.id); play(channel.id) } } }
 }
 
-@Composable private fun ChannelRow(channel: ChannelEntity, play: () -> Unit) {
+@Composable private fun ChannelRow(channel: ChannelEntity, programme: ProgrammePreview?, loadProgramme: () -> Unit, play: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(channel.id) { loadProgramme() }
     ElevatedCard(onClick = play, modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused }.border(if (focused) 3.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp)), shape = RoundedCornerShape(16.dp)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(Modifier.size(64.dp), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) { if (!channel.logoUrl.isNullOrBlank()) AsyncImage(channel.logoUrl, channel.name, Modifier.padding(6.dp)) else Icon(Icons.Default.LiveTv, null, Modifier.padding(16.dp)) }
-            Spacer(Modifier.width(14.dp)); Column(Modifier.weight(1f)) { Text(channel.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(channel.category, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1); Text("Programme information unavailable", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Spacer(Modifier.width(14.dp)); Column(Modifier.weight(1f)) { Text(channel.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(channel.category, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1); Text(when { programme?.loading == true -> "Loading programme…"; programme?.title != null -> "Now: ${programme.title}"; else -> "No guide data supplied" }, style = MaterialTheme.typography.bodySmall, color = if (programme?.title != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             IconButton({ /* favourite wiring uses the local foundation */ }) { Icon(Icons.Default.FavoriteBorder, "Favourite") }; Icon(Icons.Default.PlayArrow, null)
         }
     }
