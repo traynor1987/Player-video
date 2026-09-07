@@ -158,8 +158,9 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
     val updateState by updateModel.state.collectAsStateWithLifecycle()
     val refreshModel: SourceRefreshViewModel = viewModel(factory = SourceRefreshViewModel.factory(container))
     val refreshState by refreshModel.state.collectAsStateWithLifecycle()
-    val tmdbKey by container.preferences.tmdbApiKey.collectAsStateWithLifecycle(initialValue = "")
-    var editedTmdbKey by remember(tmdbKey) { mutableStateOf(tmdbKey) }
+    val hasTmdbKey by container.preferences.hasTmdbApiKey.collectAsStateWithLifecycle(initialValue = false)
+    var editedTmdbKey by remember { mutableStateOf("") }
+    var metadataStatus by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     LazyColumn(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -171,9 +172,14 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
             Text("Movie metadata", style = MaterialTheme.typography.titleLarge)
             ElevatedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("UK streaming availability", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text("Optional TMDB API key. It is encrypted on this device and used only to check legal UK providers.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedTextField(editedTmdbKey, { editedTmdbKey = it }, Modifier.fillMaxWidth(), label = { Text("TMDB API key") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
-                Button({ scope.launch { container.preferences.setTmdbApiKey(editedTmdbKey) } }) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text(if (editedTmdbKey.isBlank()) "Remove key" else "Save key") }
+                Text("Optional TMDB v3 API key or Read Access Token. It is encrypted on this device and used only to check legal UK providers.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (hasTmdbKey) Text("API key saved securely on this device.", color = MaterialTheme.colorScheme.primary)
+                OutlinedTextField(editedTmdbKey, { editedTmdbKey = it; metadataStatus = null }, Modifier.fillMaxWidth(), label = { Text(if (hasTmdbKey) "Replace TMDB key" else "TMDB API key") }, placeholder = { Text(if (hasTmdbKey) "Saved securely — paste only to replace" else "Paste key or Read Access Token") }, singleLine = true, visualTransformation = PasswordVisualTransformation())
+                metadataStatus?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button({ scope.launch { if (editedTmdbKey.isNotBlank()) { container.preferences.setTmdbApiKey(editedTmdbKey); editedTmdbKey = ""; metadataStatus = "Key saved securely" } } }, enabled = editedTmdbKey.isNotBlank()) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text(if (hasTmdbKey) "Replace key" else "Save key") }
+                    if (hasTmdbKey) OutlinedButton({ scope.launch { container.preferences.setTmdbApiKey(""); metadataStatus = "Key removed" } }) { Icon(Icons.Default.DeleteOutline, null); Spacer(Modifier.width(8.dp)); Text("Remove") }
+                }
             } }
         }
         item {

@@ -24,6 +24,7 @@ class PlayerPreferences(private val context: Context, private val cipher: Creden
     val tmdbApiKey = context.dataStore.data.map { preferences ->
         preferences[Keys.tmdbKeyEncrypted]?.let { runCatching { cipher.decrypt(it) }.getOrNull() }.orEmpty()
     }
+    val hasTmdbApiKey = context.dataStore.data.map { !it[Keys.tmdbKeyEncrypted].isNullOrBlank() }
     suspend fun finishSetup(sourceId: Long) = context.dataStore.edit { it[Keys.setupComplete] = true; it[Keys.activeSourceId] = sourceId }
     suspend fun selectSource(id: Long) = context.dataStore.edit { it[Keys.activeSourceId] = id }
     suspend fun rememberChannel(id: Long) = context.dataStore.edit {
