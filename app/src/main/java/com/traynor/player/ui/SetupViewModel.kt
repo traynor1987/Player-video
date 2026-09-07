@@ -52,10 +52,24 @@ class LiveViewModel(private val container: AppContainer) : ViewModel() {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LiveUiState())
     fun selectCategory(value: String?) { category.value = value }
     fun search(value: String) { query.value = value }
-    suspend fun playableUrl(id: Long) = container.sourceRepository.playableUrl(id)
+    suspend fun playableUrls(id: Long) = container.sourceRepository.playableUrls(id)
     fun remember(id: Long) = viewModelScope.launch { container.preferences.rememberChannel(id) }
     companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = LiveViewModel(container) as T
+    } }
+}
+
+data class SourceRefreshUiState(val sourceId: Long? = null, val message: String? = null, val failed: Boolean = false)
+class SourceRefreshViewModel(private val container: AppContainer) : ViewModel() {
+    private val mutable = MutableStateFlow(SourceRefreshUiState())
+    val state = mutable.asStateFlow()
+    fun refresh(sourceId: Long) = viewModelScope.launch {
+        mutable.value = SourceRefreshUiState(sourceId, "Refreshing source…")
+        runCatching { container.sourceRepository.refresh(sourceId).collect { mutable.value = SourceRefreshUiState(sourceId, it.message) } }
+            .onFailure { mutable.value = SourceRefreshUiState(sourceId, "Could not refresh this source", true) }
+    }
+    companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = SourceRefreshViewModel(container) as T
     } }
 }
 
