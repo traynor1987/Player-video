@@ -43,7 +43,8 @@ object XtreamUrls {
         // Accept either the bare server URL or a full player_api.php URL, but
         // never retain pasted query parameters or embedded credentials.
         val path = uri.path.orEmpty().trimEnd('/').replace(Regex("/(player_api|get|xmltv)\\.php$", RegexOption.IGNORE_CASE), "")
-        return java.net.URI(uri.scheme, null, uri.host, uri.port, path.ifBlank { null }, null, null).toString().trimEnd('/')
+        val canonicalPath = path.ifBlank { "" }.let { if (it.isEmpty()) null else it }
+        return java.net.URI(uri.scheme, null, uri.host, uri.port, canonicalPath, null, null).toString().trimEnd('/')
     }
     fun api(server: String) = "${normaliseServer(server)}/player_api.php"
     fun live(server: String, user: String, password: String, id: Int, extension: String? = null): String =
