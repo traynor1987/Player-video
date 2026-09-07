@@ -95,11 +95,12 @@ import com.traynor.player.data.repository.SeriesEpisode
         item { Row(verticalAlignment = Alignment.Top) { Surface(Modifier.width(150.dp).height(220.dp), shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceVariant) { if (!item.posterUrl.isNullOrBlank()) AsyncImage(item.posterUrl, item.title, Modifier.fillMaxSize()) else Icon(Icons.Default.Movie, null, Modifier.padding(46.dp)) }; Spacer(Modifier.width(18.dp)); Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) { Text(item.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold); Text(listOfNotNull(detail?.year ?: item.year, (detail?.rating ?: item.rating)?.let { "$it ★" }, detail?.runtime ?: item.runtime).joinToString(" • "), color = MaterialTheme.colorScheme.onSurfaceVariant); Button({ play(item.id) }) { Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Play") } } } }
         item { Text("Synopsis", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Spacer(Modifier.height(6.dp)); if (detailState.loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Text((detail?.synopsis ?: item.description)?.takeIf { it.isNotBlank() } ?: "No synopsis was supplied by this source.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item {
+            val availability = detailState.availability
             Text("Where to watch in the UK", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Spacer(Modifier.height(6.dp))
             when {
                 !detailState.availabilityConfigured -> Text("Add your TMDB API key in Settings to check legal streaming, rental and purchase availability.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                detailState.availability == null -> Text("No UK availability was found right now.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else -> AvailabilityDetails(detailState.availability)
+                availability == null -> Text("No UK availability was found right now.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> AvailabilityDetails(availability)
             }
             Spacer(Modifier.height(8.dp)); Text("Rotten Tomatoes critic and audience scores require a licensed Rotten Tomatoes data feed; they are not scraped.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
