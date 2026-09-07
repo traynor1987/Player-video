@@ -58,3 +58,23 @@ class LiveViewModel(private val container: AppContainer) : ViewModel() {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = LiveViewModel(container) as T
     } }
 }
+
+sealed interface UpdateUiState {
+    data object Idle : UpdateUiState
+    data object Checking : UpdateUiState
+    data object UpToDate : UpdateUiState
+    data class Available(val update: com.traynor.player.data.network.AvailableUpdate) : UpdateUiState
+    data object Unavailable : UpdateUiState
+}
+class UpdateViewModel(private val container: AppContainer) : ViewModel() {
+    private val mutable = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+    val state = mutable.asStateFlow()
+    fun check() = viewModelScope.launch {
+        mutable.value = UpdateUiState.Checking
+        mutable.value = runCatching { container.releaseRepository.latestApk(com.traynor.player.BuildConfig.VERSION_NAME) }
+            .fold(onSuccess = { if (it == null) UpdateUiState.UpToDate else UpdateUiState.Available(it) }, onFailure = { UpdateUiState.Unavailable })
+    }
+    companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = UpdateViewModel(container) as T
+    } }
+}
