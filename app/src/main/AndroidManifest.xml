@@ -11,8 +11,9 @@
         android:name=".PlayerApplication"
         android:allowBackup="true"
         android:banner="@drawable/tv_banner"
-        android:icon="@drawable/ic_launcher"
+        android:icon="@mipmap/ic_launcher"
         android:label="Player"
+        android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Player"
         android:usesCleartextTraffic="true">

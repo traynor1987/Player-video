@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -35,6 +36,7 @@ import androidx.navigation.compose.*
 import coil.compose.AsyncImage
 import com.traynor.player.AppContainer
 import com.traynor.player.BuildConfig
+import com.traynor.player.R
 import com.traynor.player.core.model.*
 import com.traynor.player.data.local.ChannelEntity
 import com.traynor.player.ui.player.VideoPlayer
@@ -73,7 +75,7 @@ private enum class Destination(val route: String, val title: String, val icon: I
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp), contentAlignment = Alignment.Center) {
         Card(Modifier.widthIn(max = 680.dp), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Icon(Icons.Default.LiveTv, null, Modifier.size(44.dp), tint = MaterialTheme.colorScheme.primary)
+                Icon(painterResource(R.drawable.player_mark), null, Modifier.size(48.dp), tint = Color.Unspecified)
                 Text("Add your TV source", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                 Text("Player contains no channels or subscriptions. Add a legitimate source you control.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 AnimatedContent(type, label = "setup") { selected ->
@@ -116,7 +118,7 @@ private enum class Destination(val route: String, val title: String, val icon: I
         val rail = isTv || maxWidth >= 840.dp
         val isPlayer = current?.let { it.startsWith("player/") || it.startsWith("movie-player/") || it.startsWith("episode/") } == true
         Row(Modifier.fillMaxSize()) {
-            if (rail && !isPlayer) NavigationRail(header = { Icon(Icons.Default.PlayCircle, "Player", Modifier.padding(16.dp).size(40.dp), tint = MaterialTheme.colorScheme.primary) }) {
+            if (rail && !isPlayer) NavigationRail(header = { Icon(painterResource(R.drawable.player_mark), "Player", Modifier.padding(16.dp).size(40.dp), tint = Color.Unspecified) }) {
                 Destination.entries.forEach { item -> NavigationRailItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }, label = { Text(item.title) }) }
             }
             Scaffold(bottomBar = { if (!rail && !isPlayer) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Movies, Destination.Search, Destination.Settings).forEach { item -> NavigationBarItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }) } } }) { padding ->
