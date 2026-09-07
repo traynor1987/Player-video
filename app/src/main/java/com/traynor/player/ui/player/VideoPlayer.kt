@@ -76,7 +76,21 @@ import kotlinx.coroutines.delay
             else -> { controls = true; false }
         }
     }) {
-        AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false; keepScreenOn = true; layoutParams = ViewGroup.LayoutParams(-1, -1); this.resizeMode = resizeMode } }, update = { it.resizeMode = resizeMode }, modifier = Modifier.fillMaxSize())
+        AndroidView(
+            factory = { viewContext -> PlayerView(viewContext).apply {
+                this.player = player
+                useController = false
+                keepScreenOn = true
+                isClickable = true
+                // Live controls intentionally fade after inactivity. A normal
+                // tap on the picture always brings them back (or hides them).
+                setOnClickListener { controls = !controls }
+                layoutParams = ViewGroup.LayoutParams(-1, -1)
+                this.resizeMode = resizeMode
+            } },
+            update = { it.resizeMode = resizeMode },
+            modifier = Modifier.fillMaxSize()
+        )
         if (buffering && error == null) Row(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .6f), MaterialTheme.shapes.large).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White); Spacer(Modifier.width(12.dp)); Text(if (candidateIndex > 0) "Trying compatible stream…" else "Buffering stream…", color = Color.White) }
         AnimatedVisibility(controls) { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .35f))) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text("Live TV", color = Color.White, style = MaterialTheme.typography.titleLarge); Text("Live stream", color = Color.White.copy(alpha = .75f)) } }
             Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
