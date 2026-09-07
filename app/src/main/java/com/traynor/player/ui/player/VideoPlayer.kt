@@ -8,6 +8,8 @@ import android.content.ContextWrapper
 import android.util.Rational
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
@@ -39,6 +41,8 @@ import com.traynor.player.data.local.ChannelEntity
 import com.traynor.player.data.repository.GuideProgramme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import java.text.DateFormat
+import java.util.Date
 
 enum class PlaybackType { LIVE, MOVIE, EPISODE }
 
@@ -151,7 +155,7 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
             modifier = Modifier.fillMaxSize()
         )
         if (!inPip && buffering && error == null) Row(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .6f), MaterialTheme.shapes.large).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White); Spacer(Modifier.width(12.dp)); Text(if (candidateIndex > 0) "Trying compatible stream…" else "Buffering stream…", color = Color.White) }
-        if (!inPip) AnimatedVisibility(controls) { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .35f))) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text(if (type == PlaybackType.LIVE) liveChannel?.name ?: "Live TV" else if (type == PlaybackType.MOVIE) "Movie" else "Episode", color = Color.White, style = MaterialTheme.typography.titleLarge); Text(if (type == PlaybackType.LIVE) "Live stream" else "On-demand video", color = Color.White.copy(alpha = .75f)) } }
+        if (!inPip) AnimatedVisibility(visible = controls, enter = fadeIn(), exit = fadeOut()) { Box(Modifier.fillMaxSize()) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text(if (type == PlaybackType.LIVE) liveChannel?.name ?: "Live TV" else if (type == PlaybackType.MOVIE) "Movie" else "Episode", color = Color.White, style = MaterialTheme.typography.titleLarge); Text(if (type == PlaybackType.LIVE) "Live stream" else "On-demand video", color = Color.White.copy(alpha = .75f)) } }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (type == PlaybackType.LIVE) MiniEpg(guide, guideLoading)
                 if (onDemand && durationMs > 0L) {
@@ -177,17 +181,20 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
 }
 
 @Composable private fun MiniEpg(programmes: List<GuideProgramme>, loading: Boolean) {
-    val now = System.currentTimeMillis()
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (isActive) { now = System.currentTimeMillis(); delay(1_000) } }
     val current = programmes.firstOrNull { it.startMillis != null && it.endMillis != null && it.startMillis <= now && it.endMillis > now }
         ?: programmes.firstOrNull { it.startMillis != null && it.startMillis > now }
     val next = current?.let { programme -> programmes.firstOrNull { it.startMillis != null && programme.endMillis != null && it.startMillis >= programme.endMillis } }
     if (!loading && current == null) return
     Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = Color(0xE61A1D29)) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.LiveTv, null, Modifier.size(18.dp), tint = Color(0xFF9EB4FF))
                 Spacer(Modifier.width(8.dp))
                 Text(if (loading) "Loading programme guide…" else "Now", color = Color(0xFF9EB4FF), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)), color = Color.White.copy(alpha = .72f), style = MaterialTheme.typography.labelLarge)
             }
             if (loading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -197,7 +204,14 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
                     if (item.startMillis != null && item.endMillis != null && item.endMillis > item.startMillis) ((now - item.startMillis).toFloat() / (item.endMillis - item.startMillis)).coerceIn(0f, 1f) else 0f
                 } ?: 0f
                 LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = Color(0xFF8FAAFF), trackColor = Color.White.copy(alpha = .2f))
-                next?.title?.let { Text("Next  $it", color = Color.White.copy(alpha = .72f), style = MaterialTheme.typography.bodySmall, maxLines = 1) }
+                next?.let { item ->
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Next", color = Color(0xFF9EB4FF), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.width(8.dp))
+                        Text(item.title, Modifier.weight(1f), color = Color.White.copy(alpha = .72f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                        item.startMillis?.let { start -> Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(start)), color = Color.White.copy(alpha = .72f), style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
             }
         }
     }
