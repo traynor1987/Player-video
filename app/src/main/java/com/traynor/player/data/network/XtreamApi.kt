@@ -71,6 +71,17 @@ data class XtreamEpisode(
 )
 @JsonClass(generateAdapter = true)
 data class XtreamEpisodeInfo(val plot: String? = null, val duration: String? = null, @Json(name = "movie_image") val image: String? = null)
+@JsonClass(generateAdapter = true)
+data class XtreamEpgResponse(@Json(name = "epg_listings") val listings: List<XtreamEpgListing>? = null)
+@JsonClass(generateAdapter = true)
+data class XtreamEpgListing(
+    val title: String? = null,
+    val description: String? = null,
+    val start: String? = null,
+    val end: String? = null,
+    @Json(name = "start_timestamp") val startTimestamp: Long? = null,
+    @Json(name = "stop_timestamp") val endTimestamp: Long? = null
+)
 
 interface XtreamApi {
     @GET suspend fun authenticate(@Url url: String, @Query("username") username: String, @Query("password") password: String): Response<XtreamAuthResponse>
@@ -80,6 +91,7 @@ interface XtreamApi {
     @GET suspend fun vodInfo(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String = "get_vod_info", @Query("vod_id") vodId: String): Response<XtreamVodInfoResponse>
     @GET suspend fun series(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String = "get_series"): Response<List<XtreamSeries>>
     @GET suspend fun seriesInfo(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String = "get_series_info", @Query("series_id") seriesId: String): Response<XtreamSeriesInfo>
+    @GET suspend fun simpleEpg(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String = "get_simple_data_table", @Query("stream_id") streamId: String): Response<XtreamEpgResponse>
 }
 
 object XtreamUrls {

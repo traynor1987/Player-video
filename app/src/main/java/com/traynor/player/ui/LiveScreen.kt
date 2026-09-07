@@ -20,17 +20,18 @@ import coil.compose.AsyncImage
 import com.traynor.player.AppContainer
 import com.traynor.player.data.local.ChannelEntity
 
-@Composable fun LiveScreen(container: AppContainer, play: (Long) -> Unit) {
+@Composable fun LiveScreen(container: AppContainer, play: (Long) -> Unit, openGuide: () -> Unit) {
     val model: LiveViewModel = viewModel(factory = LiveViewModel.factory(container)); val state by model.state.collectAsStateWithLifecycle()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 840.dp
         if (state.loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         else if (wide) Row(Modifier.fillMaxSize()) {
-            CategoryPane(state, model, Modifier.width(230.dp).fillMaxHeight())
+            CategoryPane(state, model, openGuide, Modifier.width(230.dp).fillMaxHeight())
             ChannelPane(state, model, play, Modifier.weight(1f).fillMaxHeight())
             Box(Modifier.widthIn(min = 300.dp, max = 440.dp).fillMaxHeight().padding(20.dp), contentAlignment = Alignment.Center) { Text("Choose a channel to play\nFull-screen playback supports remote controls and Picture-in-Picture.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         } else Column(Modifier.fillMaxSize()) {
             LazyRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { AssistChip(openGuide, label = { Text("TV Guide") }, leadingIcon = { Icon(Icons.Default.CalendarMonth, null) }) }
                 item { FilterChip(state.selectedCategory == null, { model.selectCategory(null) }, { Text("All") }) }
                 items(state.categories) { category -> FilterChip(state.selectedCategory == category, { model.selectCategory(category) }, { Text(category) }) }
             }
@@ -39,8 +40,9 @@ import com.traynor.player.data.local.ChannelEntity
     }
 }
 
-@Composable private fun CategoryPane(state: LiveUiState, model: LiveViewModel, modifier: Modifier) = LazyColumn(modifier.background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+@Composable private fun CategoryPane(state: LiveUiState, model: LiveViewModel, openGuide: () -> Unit, modifier: Modifier) = LazyColumn(modifier.background(MaterialTheme.colorScheme.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
     item { Text("Live TV", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.padding(10.dp)) }
+    item { FilledTonalButton(openGuide, Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("TV Guide") } }
     item { CategoryButton("All channels", state.selectedCategory == null) { model.selectCategory(null) } }
     items(state.categories) { category -> CategoryButton(category, state.selectedCategory == category) { model.selectCategory(category) } }
 }

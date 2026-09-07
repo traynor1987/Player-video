@@ -32,6 +32,14 @@ data class MovieDetails(
     val imdbId: String? = null,
     val tmdbId: String? = null
 )
+data class GuideProgramme(
+    val title: String,
+    val description: String? = null,
+    val startMillis: Long? = null,
+    val endMillis: Long? = null,
+    val startLabel: String? = null,
+    val endLabel: String? = null
+)
 
 class SourceRepository(
     private val sourceDao: SourceDao,
@@ -161,6 +169,31 @@ class SourceRepository(
         streamCandidates(cipher.decrypt(it.streamUrlEncrypted))
     }.orEmpty()
 
+    /** EPG remains with the user's authorised Xtream source; it is requested only
+     * when a channel is opened in the guide, rather than downloading a whole grid. */
+    suspend fun guideForChannel(channelId: Long): List<GuideProgramme> = withContext(Dispatchers.IO) {
+        val channel = channelDao.get(channelId) ?: return@withContext emptyList()
+        val source = sourceDao.get(channel.sourceId) ?: return@withContext emptyList()
+        if (source.type != SourceType.XTREAM) return@withContext emptyList()
+        val response = api.simpleEpg(
+            XtreamUrls.api(cipher.decrypt(source.endpointEncrypted)),
+            cipher.decrypt(source.usernameEncrypted), cipher.decrypt(source.passwordEncrypted),
+            streamId = channel.externalId
+        )
+        if (!response.isSuccessful) return@withContext emptyList()
+        response.body()?.listings.orEmpty().mapNotNull { listing ->
+            val title = listing.title.decodeEpgText().ifBlank { return@mapNotNull null }
+            GuideProgramme(
+                title = title,
+                description = listing.description.decodeEpgText().ifBlank { null },
+                startMillis = listing.startTimestamp?.times(1_000),
+                endMillis = listing.endTimestamp?.times(1_000),
+                startLabel = listing.start,
+                endLabel = listing.end
+            )
+        }.sortedBy { it.startMillis ?: Long.MAX_VALUE }
+    }
+
     suspend fun playableMovieUrls(movieId: Long): List<String> = movieDao.get(movieId)?.let {
         streamCandidates(cipher.decrypt(it.streamUrlEncrypted))
     }.orEmpty()
@@ -201,6 +234,11 @@ class SourceRepository(
             scheme.equals("http", true) || scheme.equals("https", true)
         }.getOrDefault(false)
     }
+
+    private fun String?.decodeEpgText(): String = this.orEmpty().let { value ->
+        runCatching { String(android.util.Base64.decode(value, android.util.Base64.DEFAULT), Charsets.UTF_8) }
+            .getOrDefault(value)
+    }.trim()
 
     /**
      * Xtream panels occasionally advertise .ts while serving the same live path

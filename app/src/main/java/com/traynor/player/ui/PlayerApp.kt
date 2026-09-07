@@ -122,7 +122,7 @@ private enum class Destination(val route: String, val title: String, val icon: I
             Scaffold(bottomBar = { if (!rail && !isPlayer) NavigationBar { listOf(Destination.Home, Destination.Live, Destination.Movies, Destination.Search, Destination.Settings).forEach { item -> NavigationBarItem(selected = current == item.route, onClick = { navigate(nav, item.route) }, icon = { Icon(item.icon, item.title) }) } } }) { padding ->
                 NavHost(nav, Destination.Home.route, if (isPlayer) Modifier.fillMaxSize() else Modifier.padding(padding)) {
                     composable("home") { Dashboard { navigate(nav, "live") } }
-                    composable("live") { LiveScreen(container) { nav.navigate("player/$it") } }
+                    composable("live") { LiveScreen(container, { nav.navigate("player/$it") }, { nav.navigate("guide") }) }
                     composable("player/{id}") { entry -> VideoPlayer(entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable, container, enterPip, inPip, { nav.popBackStack() }) }
                     composable("movies") { MoviesScreen(container) { nav.navigate("movie/$it") } }
                     composable("movie/{id}") { entry -> MovieDetailScreen(entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable, container, { nav.navigate("movie-player/$it") }, { nav.popBackStack() }) }
@@ -130,7 +130,7 @@ private enum class Destination(val route: String, val title: String, val icon: I
                     composable("series") { SeriesScreen(container) { nav.navigate("series/$it") } }
                     composable("series/{id}") { entry -> SeriesDetailScreen(entry.arguments?.getString("id")?.toLongOrNull() ?: return@composable, container, { episode -> nav.navigate("episode/${episode.seriesId}/${Uri.encode(episode.episodeId)}/${Uri.encode(episode.extension ?: "mp4")}") }, { nav.popBackStack() }) }
                     composable("episode/{seriesId}/{episodeId}/{extension}") { entry -> VideoPlayer(entry.arguments?.getString("seriesId")?.toLongOrNull() ?: return@composable, container, enterPip, inPip, { nav.popBackStack() }, PlaybackType.EPISODE, Uri.decode(entry.arguments?.getString("episodeId").orEmpty()), Uri.decode(entry.arguments?.getString("extension").orEmpty())) }
-                    composable("guide") { FoundationScreen("TV Guide", "XMLTV and the horizontally scrolling programme grid are next.", Icons.Default.CalendarMonth) }
+                    composable("guide") { GuideScreen(container) { nav.navigate("player/$it") } }
                     composable("search") { FoundationScreen("Universal search", "Live channels are searchable now; Movies and Series will join this screen.", Icons.Default.Search) }
                     composable("favourites") { FoundationScreen("Favourites", "The local favourites database is ready for Channels, Movies and Series.", Icons.Default.Favorite) }
                     composable("settings") { SettingsScreen(container) }

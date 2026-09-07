@@ -59,6 +59,33 @@ class LiveViewModel(private val container: AppContainer) : ViewModel() {
     } }
 }
 
+data class GuideUiState(
+    val channels: List<com.traynor.player.data.local.ChannelEntity> = emptyList(),
+    val selectedChannel: com.traynor.player.data.local.ChannelEntity? = null,
+    val programmes: List<com.traynor.player.data.repository.GuideProgramme> = emptyList(),
+    val loading: Boolean = true,
+    val loadingProgrammes: Boolean = false
+)
+class GuideViewModel(private val container: AppContainer) : ViewModel() {
+    private val selectedId = MutableStateFlow<Long?>(null)
+    private val channels = container.preferences.activeSourceId.filterNotNull().flatMapLatest { sourceId ->
+        container.database.channelDao().observePage(sourceId, null, "", limit = 500)
+    }
+    private val selection = combine(channels, selectedId) { entries, selected -> entries to entries.firstOrNull { it.id == selected } }
+    val state = selection.flatMapLatest { (entries, selected) ->
+        if (selected == null) flowOf(GuideUiState(channels = entries, loading = false))
+        else flow {
+            emit(GuideUiState(entries, selected, loading = false, loadingProgrammes = true))
+            val programmes = runCatching { container.sourceRepository.guideForChannel(selected.id) }.getOrDefault(emptyList())
+            emit(GuideUiState(entries, selected, programmes, loading = false))
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GuideUiState())
+    fun select(id: Long) { selectedId.value = id }
+    companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = GuideViewModel(container) as T
+    } }
+}
+
 data class MoviesUiState(val sourceId: Long? = null, val categories: List<String> = emptyList(), val selectedCategory: String? = null, val movies: List<com.traynor.player.data.local.MovieEntity> = emptyList(), val query: String = "", val loading: Boolean = true)
 class MoviesViewModel(private val container: AppContainer) : ViewModel() {
     private val category = MutableStateFlow<String?>(null); private val query = MutableStateFlow("")
