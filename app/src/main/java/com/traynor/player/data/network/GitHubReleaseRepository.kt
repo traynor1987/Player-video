@@ -1,0 +1,48 @@
+package com.traynor.player.data.network
+
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonClass
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import retrofit2.Retrofit
+import retrofit2.converter.moshi.MoshiConverterFactory
+import com.squareup.moshi.Moshi
+
+@JsonClass(generateAdapter = true)
+data class GitHubRelease(
+    @Json(name = "tag_name") val tagName: String,
+    @Json(name = "html_url") val htmlUrl: String,
+    val assets: List<GitHubReleaseAsset> = emptyList()
+)
+@JsonClass(generateAdapter = true)
+data class GitHubReleaseAsset(
+    val name: String,
+    @Json(name = "browser_download_url") val downloadUrl: String,
+    val digest: String? = null,
+    val size: Long = 0
+)
+
+private interface GitHubReleasesApi { @retrofit2.http.GET("repos/traynor1987/Player-video/releases/latest") suspend fun latest(): GitHubRelease }
+
+data class AvailableUpdate(val version: String, val asset: GitHubReleaseAsset)
+
+class GitHubReleaseRepository(client: OkHttpClient) {
+    private val api = Retrofit.Builder().baseUrl("https://api.github.com/")
+        .client(client.newBuilder().addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("Accept", "application/vnd.github+json").header("User-Agent", "Player-Android").build()) }.build())
+        .addConverterFactory(MoshiConverterFactory.create(Moshi.Builder().build())).build().create(GitHubReleasesApi::class.java)
+
+    suspend fun latestApk(currentVersion: String): AvailableUpdate? = withContext(Dispatchers.IO) {
+        val release = api.latest()
+        val version = release.tagName.removePrefix("v")
+        val apk = release.assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) } ?: return@withContext null
+        if (compareVersions(version, currentVersion) > 0) AvailableUpdate(version, apk) else null
+    }
+
+    private fun compareVersions(left: String, right: String): Int {
+        val a = left.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+        val b = right.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+        return (0 until maxOf(a.size, b.size)).map { (a.getOrElse(it) { 0 }).compareTo(b.getOrElse(it) { 0 }) }.firstOrNull { it != 0 } ?: 0
+    }
+}
