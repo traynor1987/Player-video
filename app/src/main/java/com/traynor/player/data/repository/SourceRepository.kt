@@ -186,8 +186,8 @@ class SourceRepository(
             GuideProgramme(
                 title = title,
                 description = listing.description.decodeEpgText().ifBlank { null },
-                startMillis = listing.startTimestamp?.times(1_000),
-                endMillis = listing.endTimestamp?.times(1_000),
+                startMillis = listing.startTimestamp?.toLongOrNull()?.times(1_000),
+                endMillis = listing.endTimestamp?.toLongOrNull()?.times(1_000),
                 startLabel = listing.start,
                 endLabel = listing.end
             )

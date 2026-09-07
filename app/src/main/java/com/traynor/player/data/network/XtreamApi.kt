@@ -79,8 +79,9 @@ data class XtreamEpgListing(
     val description: String? = null,
     val start: String? = null,
     val end: String? = null,
-    @Json(name = "start_timestamp") val startTimestamp: Long? = null,
-    @Json(name = "stop_timestamp") val endTimestamp: Long? = null
+    // Xtream panels commonly return these Unix values as JSON strings.
+    @Json(name = "start_timestamp") val startTimestamp: String? = null,
+    @Json(name = "stop_timestamp") val endTimestamp: String? = null
 )
 
 interface XtreamApi {
