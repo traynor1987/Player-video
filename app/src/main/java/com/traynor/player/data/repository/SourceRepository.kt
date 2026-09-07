@@ -8,7 +8,12 @@ import com.traynor.player.data.network.*
 import com.traynor.player.data.parser.M3uParser
 import com.traynor.player.security.CredentialCipher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -39,6 +44,11 @@ data class GuideProgramme(
     val endMillis: Long? = null,
     val startLabel: String? = null,
     val endLabel: String? = null
+)
+data class FootballListing(
+    val channelId: Long,
+    val channelName: String,
+    val programme: GuideProgramme
 )
 
 class SourceRepository(
@@ -192,6 +202,34 @@ class SourceRepository(
                 endLabel = listing.end
             )
         }.sortedBy { it.startMillis ?: Long.MAX_VALUE }
+    }
+
+    /** Searches only the active user's authorised EPG. This deliberately does not
+     * discover streams or claim TV coverage that the source has not supplied. */
+    suspend fun footballListings(sourceId: Long, teams: Set<String>, fromMillis: Long, untilMillis: Long): List<FootballListing> = withContext(Dispatchers.IO) {
+        if (teams.isEmpty()) return@withContext emptyList()
+        val tokens = teams.map { it.lowercase().trim() }.filter { it.length > 2 }
+        if (tokens.isEmpty()) return@withContext emptyList()
+        val gate = Semaphore(4)
+        coroutineScope {
+            channelDao.sportChannels(sourceId).map { channel -> async {
+                gate.withPermit {
+                    guideForChannel(channel.id)
+                        .asSequence()
+                        .filter { programme ->
+                            val start = programme.startMillis ?: return@filter false
+                            start in fromMillis until untilMillis
+                        }
+                        .filter { programme ->
+                            val searchable = "${programme.title} ${programme.description.orEmpty()}".lowercase()
+                            tokens.any { token -> searchable.contains(token) }
+                        }
+                        .map { programme -> FootballListing(channel.id, channel.name, programme) }
+                        .toList()
+                }
+            } }.awaitAll().flatten()
+        }.distinctBy { "${it.channelId}:${it.programme.startMillis}:${it.programme.title}" }
+            .sortedBy { it.programme.startMillis ?: Long.MAX_VALUE }
     }
 
     suspend fun playableMovieUrls(movieId: Long): List<String> = movieDao.get(movieId)?.let {
