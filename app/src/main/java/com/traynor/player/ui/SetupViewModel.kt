@@ -54,7 +54,7 @@ class LiveViewModel(private val container: AppContainer) : ViewModel() {
     private val epgRequests = Semaphore(3)
     private val libraryState = container.preferences.activeSourceId.filterNotNull().flatMapLatest { sourceId ->
         combine(container.database.channelDao().categories(sourceId), category, query) { cats, cat, q -> Triple(cats, cat, q) }
-            .flatMapLatest { (cats, cat, q) -> container.database.channelDao().observePage(sourceId, cat, q).map { LiveUiState(sourceId, cats, cat, it, q, false) } }
+            .flatMapLatest { (cats, cat, q) -> container.database.channelDao().observePage(sourceId, cat, q).map { LiveUiState(sourceId, cats.sortedWith(categoryComparator), cat, it.sortedWith(channelComparator), q, false) } }
     }
     val state: StateFlow<LiveUiState> = combine(libraryState, previews) { library, programmePreviews -> library.copy(programmePreviews = programmePreviews) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LiveUiState())
@@ -92,7 +92,7 @@ data class GuideUiState(
 class GuideViewModel(private val container: AppContainer) : ViewModel() {
     private val selectedId = MutableStateFlow<Long?>(null)
     private val channels = container.preferences.activeSourceId.filterNotNull().flatMapLatest { sourceId ->
-        container.database.channelDao().observePage(sourceId, null, "", limit = 500)
+        container.database.channelDao().observePage(sourceId, null, "", limit = 500).map { it.sortedWith(channelComparator) }
     }
     private val selection = combine(channels, selectedId) { entries, selected -> entries to entries.firstOrNull { it.id == selected } }
     val state = selection.flatMapLatest { (entries, selected) ->
@@ -107,6 +107,32 @@ class GuideViewModel(private val container: AppContainer) : ViewModel() {
     companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = GuideViewModel(container) as T
     } }
+}
+
+private val categoryComparator = compareBy<String> { category ->
+    val value = category.lowercase()
+    when {
+        value.contains("uk") || value.contains("united kingdom") || value.contains("brit") -> 0
+        value.contains("english") -> 1
+        value.contains("usa") || value.contains("canada") -> 2
+        else -> 3
+    }
+}.thenBy { it.lowercase() }
+
+private val channelComparator = Comparator<com.traynor.player.data.local.ChannelEntity> { left, right ->
+    channelSortKey(left).compareTo(channelSortKey(right))
+}
+
+private data class ChannelSortKey(val uk: Int, val main: Int, val number: Int, val name: String) : Comparable<ChannelSortKey> {
+    override fun compareTo(other: ChannelSortKey) = compareValuesBy(this, other, ChannelSortKey::uk, ChannelSortKey::main, ChannelSortKey::number, ChannelSortKey::name)
+}
+private fun channelSortKey(channel: com.traynor.player.data.local.ChannelEntity): ChannelSortKey {
+    val name = channel.name.lowercase()
+    val uk = if (channel.category.lowercase().contains("uk") || name.startsWith("uk:")) 0 else 1
+    val main = listOf("bbc one", "bbc two", "itv1", "channel 4", "channel 5", "bbc three", "bbc four", "itv2", "itv3", "itv4", "e4", "more4", "film4").indexOfFirst { name.contains(it) }.let { if (it < 0) 99 else it }
+    val number = Regex("(?:^|[^0-9])(\\d{1,4})(?:[^0-9]|$)").find(channel.name)?.groupValues?.get(1)?.toIntOrNull()
+        ?: channel.externalId.toIntOrNull() ?: Int.MAX_VALUE
+    return ChannelSortKey(uk, main, number, name)
 }
 
 data class MoviesUiState(val sourceId: Long? = null, val categories: List<String> = emptyList(), val selectedCategory: String? = null, val movies: List<com.traynor.player.data.local.MovieEntity> = emptyList(), val query: String = "", val loading: Boolean = true)
