@@ -3,12 +3,14 @@ package com.traynor.player.data.network
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import com.squareup.moshi.Moshi
+import java.io.IOException
 
 @JsonClass(generateAdapter = true)
 data class GitHubRelease(
@@ -35,6 +37,7 @@ data class AvailableUpdate(
     val releaseUrl: String
 )
 data class ReleaseCheck(val latestVersion: String, val releaseUrl: String, val update: AvailableUpdate?)
+class ReleasePreparingException : IOException("The latest release is still being prepared")
 
 class GitHubReleaseRepository(client: OkHttpClient) {
     private val api = Retrofit.Builder().baseUrl("https://api.github.com/")
@@ -42,17 +45,30 @@ class GitHubReleaseRepository(client: OkHttpClient) {
         .addConverterFactory(MoshiConverterFactory.create(Moshi.Builder().build())).build().create(GitHubReleasesApi::class.java)
 
     suspend fun check(currentVersion: String): ReleaseCheck = withContext(Dispatchers.IO) {
-        val release = api.latest()
+        // GitHub can briefly expose a newly-created release before Actions has attached its APK.
+        // Retry transient failures so a healthy connection does not look like a broken updater.
+        val release = retryLatest()
         val version = release.tagName.removePrefix("v")
         require(version.matches(Regex("\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?"))) { "Latest release has an invalid version" }
         val apkName = "Player-v$version.apk"
         val apk = release.assets.firstOrNull { it.name == apkName }
-            ?: error("Latest release does not contain $apkName")
+            ?: throw ReleasePreparingException()
         val checksum = release.assets.firstOrNull { it.name == "$apkName.sha256" }
         val update = if (compareVersions(version, currentVersion) > 0) {
             AvailableUpdate(version, apk, checksum, release.body?.takeIf { it.isNotBlank() }, release.htmlUrl)
         } else null
         ReleaseCheck(version, release.htmlUrl, update)
+    }
+
+    private suspend fun retryLatest(): GitHubRelease {
+        var last: Throwable? = null
+        repeat(3) { attempt ->
+            try { return api.latest() } catch (error: Throwable) {
+                last = error
+                if (attempt < 2) delay(750L * (attempt + 1))
+            }
+        }
+        throw (last ?: IOException("GitHub update check failed"))
     }
 
     private fun compareVersions(left: String, right: String): Int {
