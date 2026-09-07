@@ -9,6 +9,7 @@
     <application
         android:name=".PlayerApplication"
         android:allowBackup="true"
+        android:banner="@drawable/tv_banner"
         android:icon="@drawable/ic_launcher"
         android:label="Player"
         android:supportsRtl="true"
