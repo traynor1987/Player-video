@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -34,6 +35,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.traynor.player.AppContainer
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 enum class PlaybackType { LIVE, MOVIE, EPISODE }
 
@@ -43,6 +45,8 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
     var error by remember { mutableStateOf<String?>(null) }; var controls by remember { mutableStateOf(true) }; var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var buffering by remember { mutableStateOf(false) }; var ready by remember { mutableStateOf(false) }; var attempt by remember { mutableIntStateOf(0) }
     var pipAspectRatio by remember { mutableStateOf(Rational(16, 9)) }
+    var positionMs by remember { mutableLongStateOf(0L) }; var durationMs by remember { mutableLongStateOf(0L) }; var scrubPosition by remember { mutableFloatStateOf(0f) }
+    val onDemand = type != PlaybackType.LIVE
     val httpFactory = remember { DefaultHttpDataSource.Factory().setUserAgent("Player/1.0 (Android)").setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15_000).setReadTimeoutMs(45_000) }
     val player = remember { ExoPlayer.Builder(context, DefaultRenderersFactory(context).setEnableDecoderFallback(true))
         .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
@@ -63,6 +67,14 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
     } }
     LaunchedEffect(url, attempt) { if (url != null) { delay(20_000); if (!ready && error == null) { buffering = false; error = "This stream is taking too long to respond. Try again or choose another channel." } } }
     LaunchedEffect(controls) { if (controls) { delay(4_000); controls = false } }
+    LaunchedEffect(player, onDemand) {
+        if (onDemand) while (isActive) {
+            positionMs = player.currentPosition.coerceAtLeast(0L)
+            durationMs = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
+            if (durationMs > 0L) scrubPosition = positionMs.toFloat() / durationMs
+            delay(500)
+        }
+    }
     // The listener survives candidate changes; releasing the player between
     // fallback URLs would turn a recoverable error into a permanent black screen.
     DisposableEffect(player) {
@@ -100,6 +112,8 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
             Key.Back -> { if (controls) controls = false else close(); true }
             Key.DirectionUp -> { controls = true; true }
             Key.DirectionDown -> { controls = true; true }
+            Key.DirectionLeft -> if (onDemand) { player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)); controls = true; true } else { controls = true; false }
+            Key.DirectionRight -> if (onDemand) { player.seekTo((player.currentPosition + 10_000).coerceAtMost(player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE)); controls = true; true } else { controls = true; false }
             else -> { controls = true; false }
         }
     }) {
@@ -120,16 +134,33 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
         )
         if (!inPip && buffering && error == null) Row(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .6f), MaterialTheme.shapes.large).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White); Spacer(Modifier.width(12.dp)); Text(if (candidateIndex > 0) "Trying compatible stream…" else "Buffering stream…", color = Color.White) }
         if (!inPip) AnimatedVisibility(controls) { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .35f))) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text(if (type == PlaybackType.LIVE) "Live TV" else if (type == PlaybackType.MOVIE) "Movie" else "Episode", color = Color.White, style = MaterialTheme.typography.titleLarge); Text(if (type == PlaybackType.LIVE) "Live stream" else "On-demand video", color = Color.White.copy(alpha = .75f)) } }
-            Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (onDemand && durationMs > 0L) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(formatTime(positionMs), color = Color.White, fontSize = 12.sp)
+                        Slider(scrubPosition, { scrubPosition = it; controls = true }, Modifier.weight(1f).padding(horizontal = 10.dp), onValueChangeFinished = { player.seekTo((scrubPosition * durationMs).toLong()) })
+                        Text(formatTime(durationMs), color = Color.White, fontSize = 12.sp)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 if (type == PlaybackType.LIVE) IconButton({ /* previous channel foundation */ }) { Icon(Icons.Default.SkipPrevious, "Previous channel", tint = Color.White) }
+                if (onDemand) IconButton({ player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)) }) { Icon(Icons.Default.Replay10, "Back 10 seconds", tint = Color.White) }
                 FilledIconButton({ if (player.isPlaying) player.pause() else player.play() }, Modifier.size(64.dp)) { Icon(if (player.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", Modifier.size(36.dp)) }
+                if (onDemand) IconButton({ player.seekTo((player.currentPosition + 10_000).coerceAtMost(player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE)) }) { Icon(Icons.Default.Forward10, "Forward 10 seconds", tint = Color.White) }
                 if (type == PlaybackType.LIVE) IconButton({ /* next channel foundation */ }) { Icon(Icons.Default.SkipNext, "Next channel", tint = Color.White) }
                 IconButton({ resizeMode = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT }) { Icon(Icons.Default.AspectRatio, "Fit or fill", tint = Color.White) }
                 IconButton({ controls = false; enterPip(pipAspectRatio) }) { Icon(Icons.Default.PictureInPictureAlt, "Picture in Picture", tint = Color.White) }
+                }
             }
         } }
         if (!inPip) error?.let { message -> Card(Modifier.align(Alignment.Center).padding(24.dp)) { Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) { Icon(Icons.Default.ErrorOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(44.dp)); Text(message, style = MaterialTheme.typography.titleMedium); Button({ candidateIndex = 0; attempt++; error = null }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Retry") } } } }
     }
+}
+
+private fun formatTime(milliseconds: Long): String {
+    val seconds = (milliseconds / 1_000).coerceAtLeast(0)
+    val hours = seconds / 3_600
+    return if (hours > 0) "%d:%02d:%02d".format(hours, (seconds % 3_600) / 60, seconds % 60) else "%d:%02d".format(seconds / 60, seconds % 60)
 }
 
 private fun Context.findActivity(): Activity? = when (this) {

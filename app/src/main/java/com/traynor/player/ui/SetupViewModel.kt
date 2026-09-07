@@ -104,6 +104,23 @@ class SeriesDetailViewModel(private val container: AppContainer) : ViewModel() {
     } }
 }
 
+data class MovieDetailUiState(val loading: Boolean = true, val details: com.traynor.player.data.repository.MovieDetails? = null, val availability: com.traynor.player.data.network.UkAvailability? = null, val availabilityConfigured: Boolean = false)
+class MovieDetailViewModel(private val container: AppContainer) : ViewModel() {
+    private val mutable = MutableStateFlow(MovieDetailUiState())
+    val state = mutable.asStateFlow()
+    fun load(id: Long) = viewModelScope.launch {
+        mutable.value = MovieDetailUiState(true)
+        val details = runCatching { container.sourceRepository.movieDetails(id) }.getOrNull()
+        val key = container.preferences.tmdbApiKey.first()
+        val movie = container.database.movieDao().get(id)
+        val availability = if (key.isNotBlank() && movie != null) runCatching { container.tmdbRepository.movieUkAvailability(key, movie.title, details?.year ?: movie.year, details?.tmdbId) }.getOrNull() else null
+        mutable.value = MovieDetailUiState(false, details, availability, key.isNotBlank())
+    }
+    companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = MovieDetailViewModel(container) as T
+    } }
+}
+
 data class SourceRefreshUiState(val sourceId: Long? = null, val message: String? = null, val running: Boolean = false, val failed: Boolean = false)
 class SourceRefreshViewModel(private val container: AppContainer) : ViewModel() {
     private val mutable = MutableStateFlow(SourceRefreshUiState())

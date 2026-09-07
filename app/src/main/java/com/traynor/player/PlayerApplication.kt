@@ -8,6 +8,7 @@ import com.squareup.moshi.Moshi
 import com.traynor.player.data.local.PlayerDatabase
 import com.traynor.player.data.network.XtreamApi
 import com.traynor.player.data.network.GitHubReleaseRepository
+import com.traynor.player.data.network.TmdbRepository
 import com.traynor.player.data.parser.M3uParser
 import com.traynor.player.data.preferences.PlayerPreferences
 import com.traynor.player.data.repository.SourceRepository
@@ -48,4 +49,5 @@ class AppContainer(app: Application) {
         .build().create(XtreamApi::class.java)
     val sourceRepository = SourceRepository(database.sourceDao(), database.channelDao(), database.movieDao(), database.seriesDao(), CredentialCipher(), api, http, app.contentResolver, M3uParser())
     val releaseRepository = GitHubReleaseRepository(http)
+    val tmdbRepository = TmdbRepository(http)
 }

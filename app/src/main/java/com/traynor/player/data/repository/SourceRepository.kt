@@ -24,6 +24,14 @@ data class SeriesEpisode(
     val description: String? = null,
     val artworkUrl: String? = null
 )
+data class MovieDetails(
+    val synopsis: String? = null,
+    val runtime: String? = null,
+    val rating: String? = null,
+    val year: String? = null,
+    val imdbId: String? = null,
+    val tmdbId: String? = null
+)
 
 class SourceRepository(
     private val sourceDao: SourceDao,
@@ -156,6 +164,18 @@ class SourceRepository(
     suspend fun playableMovieUrls(movieId: Long): List<String> = movieDao.get(movieId)?.let {
         streamCandidates(cipher.decrypt(it.streamUrlEncrypted))
     }.orEmpty()
+
+    suspend fun movieDetails(movieId: Long): MovieDetails? = withContext(Dispatchers.IO) {
+        val movie = movieDao.get(movieId) ?: return@withContext null
+        val source = sourceDao.get(movie.sourceId) ?: return@withContext null
+        if (source.type != SourceType.XTREAM) return@withContext MovieDetails(movie.description, movie.runtime, movie.rating, movie.year)
+        val response = api.vodInfo(
+            XtreamUrls.api(cipher.decrypt(source.endpointEncrypted)), cipher.decrypt(source.usernameEncrypted),
+            cipher.decrypt(source.passwordEncrypted), vodId = movie.externalId
+        )
+        val info = response.body()?.info
+        MovieDetails(info?.plot ?: movie.description, info?.duration ?: movie.runtime, info?.rating ?: movie.rating, info?.year ?: movie.year, info?.imdbId, info?.tmdbId)
+    }
 
     suspend fun seriesEpisodes(seriesId: Long): List<SeriesEpisode> = withContext(Dispatchers.IO) {
         val series = seriesDao.get(seriesId) ?: return@withContext emptyList()
