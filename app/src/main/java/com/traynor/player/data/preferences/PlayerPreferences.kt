@@ -18,6 +18,7 @@ class PlayerPreferences(private val context: Context, private val cipher: Creden
         val theme = stringPreferencesKey("theme")
         val tmdbKeyEncrypted = stringPreferencesKey("tmdb_key_encrypted")
         val lastUpdateCheckAt = longPreferencesKey("last_update_check_at")
+        val footballTeams = stringSetPreferencesKey("football_teams")
     }
     val setupComplete = context.dataStore.data.map { it[Keys.setupComplete] ?: false }
     val activeSourceId = context.dataStore.data.map { it[Keys.activeSourceId] }
@@ -28,6 +29,7 @@ class PlayerPreferences(private val context: Context, private val cipher: Creden
     }
     val hasTmdbApiKey = context.dataStore.data.map { !it[Keys.tmdbKeyEncrypted].isNullOrBlank() }
     val lastUpdateCheckAt = context.dataStore.data.map { it[Keys.lastUpdateCheckAt] }
+    val footballTeams = context.dataStore.data.map { it[Keys.footballTeams] ?: emptySet() }
     suspend fun finishSetup(sourceId: Long) = context.dataStore.edit { it[Keys.setupComplete] = true; it[Keys.activeSourceId] = sourceId }
     suspend fun selectSource(id: Long) = context.dataStore.edit { it[Keys.activeSourceId] = id }
     suspend fun rememberChannel(id: Long) = context.dataStore.edit {
@@ -41,4 +43,7 @@ class PlayerPreferences(private val context: Context, private val cipher: Creden
         if (value.isBlank()) it.remove(Keys.tmdbKeyEncrypted) else it[Keys.tmdbKeyEncrypted] = cipher.encrypt(value.trim())
     }
     suspend fun markUpdateChecked(time: Long = System.currentTimeMillis()) = context.dataStore.edit { it[Keys.lastUpdateCheckAt] = time }
+    suspend fun setFootballTeams(teams: Set<String>) = context.dataStore.edit { preferences ->
+        preferences[Keys.footballTeams] = teams.map { it.trim() }.filter { it.isNotBlank() }.toSet()
+    }
 }
