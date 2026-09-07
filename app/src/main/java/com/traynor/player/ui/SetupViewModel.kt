@@ -213,7 +213,14 @@ class UpdateViewModel(private val container: AppContainer) : ViewModel() {
                 val checked = System.currentTimeMillis(); container.preferences.markUpdateChecked(checked)
                 mutable.value = if (com.traynor.player.BuildConfig.DEBUG) UpdateUiState.DebugBuild(result.latestVersion, result.releaseUrl, checked)
                     else result.update?.let { UpdateUiState.Available(it, checked) } ?: UpdateUiState.UpToDate(result.latestVersion, checked)
-            }.onFailure { mutable.value = UpdateUiState.Failed("Could not check for updates. Check your connection and try again.", last) }
+            }.onFailure { error ->
+                val message = if (error is com.traynor.player.data.network.ReleasePreparingException) {
+                    "A new signed release is still being prepared. Try again in a moment."
+                } else {
+                    "Could not reach GitHub just now. Your installed app is unaffected — try again."
+                }
+                mutable.value = UpdateUiState.Failed(message, last)
+            }
     }
     fun download(update: com.traynor.player.data.network.AvailableUpdate) = viewModelScope.launch {
         mutable.value = UpdateUiState.Downloading(update, 0)
