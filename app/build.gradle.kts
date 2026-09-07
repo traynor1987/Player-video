@@ -24,7 +24,7 @@ val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKe
 
 android {
     namespace = "com.traynor.player"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.traynor.player"
