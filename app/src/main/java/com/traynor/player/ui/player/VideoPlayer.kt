@@ -50,7 +50,7 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
 @Composable fun VideoPlayer(contentId: Long, container: AppContainer, enterPip: (Rational) -> Unit, inPip: Boolean, close: () -> Unit, type: PlaybackType = PlaybackType.LIVE, episodeId: String? = null, extension: String? = null) {
     val context = LocalContext.current
     var urls by remember { mutableStateOf(emptyList<String>()) }; var candidateIndex by remember { mutableIntStateOf(0) }
-    var error by remember { mutableStateOf<String?>(null) }; var controls by remember { mutableStateOf(true) }; var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var error by remember { mutableStateOf<String?>(null) }; var controls by remember { mutableStateOf(true) }; var epgExpanded by remember { mutableStateOf(false) }; var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var buffering by remember { mutableStateOf(false) }; var ready by remember { mutableStateOf(false) }; var attempt by remember { mutableIntStateOf(0) }
     var pipAspectRatio by remember { mutableStateOf(Rational(16, 9)) }
     var positionMs by remember { mutableLongStateOf(0L) }; var durationMs by remember { mutableLongStateOf(0L) }; var scrubPosition by remember { mutableFloatStateOf(0f) }
@@ -89,7 +89,7 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
         player.setMediaItem(MediaItem.Builder().setUri(it).setMimeType(it.guessMimeType()).build()); player.prepare(); player.play()
     } }
     LaunchedEffect(url, attempt) { if (url != null) { delay(20_000); if (!ready && error == null) { buffering = false; error = "This stream is taking too long to respond. Try again or choose another channel." } } }
-    LaunchedEffect(controls) { if (controls) { delay(4_000); controls = false } }
+    LaunchedEffect(controls, epgExpanded) { if (controls) { delay(if (epgExpanded) 11_000 else 4_000); controls = false; epgExpanded = false } }
     LaunchedEffect(player, onDemand) {
         if (onDemand) while (isActive) {
             positionMs = player.currentPosition.coerceAtLeast(0L)
@@ -158,7 +158,7 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
         if (!inPip && buffering && error == null) Row(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .6f), MaterialTheme.shapes.large).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White); Spacer(Modifier.width(12.dp)); Text(if (candidateIndex > 0) "Trying compatible stream…" else "Buffering stream…", color = Color.White) }
         if (!inPip) AnimatedVisibility(visible = controls, enter = fadeIn(), exit = fadeOut()) { Box(Modifier.fillMaxSize()) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text(if (type == PlaybackType.LIVE) liveChannel?.name ?: "Live TV" else if (type == PlaybackType.MOVIE) "Movie" else "Episode", color = Color.White, style = MaterialTheme.typography.titleLarge); Text(if (type == PlaybackType.LIVE) "Live stream" else "On-demand video", color = Color.White.copy(alpha = .75f)) } }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (type == PlaybackType.LIVE) MiniEpg(guide, guideLoading)
+                if (type == PlaybackType.LIVE) MiniEpg(guide, guideLoading) { expanded -> epgExpanded = expanded; controls = true }
                 if (onDemand && durationMs > 0L) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(formatTime(positionMs), color = Color.White, fontSize = 12.sp)
@@ -181,7 +181,7 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
     }
 }
 
-@Composable private fun MiniEpg(programmes: List<GuideProgramme>, loading: Boolean) {
+@Composable private fun MiniEpg(programmes: List<GuideProgramme>, loading: Boolean, onExpandedChanged: (Boolean) -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var showDescription by remember(programmes.firstOrNull()?.title) { mutableStateOf(false) }
     LaunchedEffect(Unit) { while (isActive) { now = System.currentTimeMillis(); delay(1_000) } }
@@ -189,7 +189,7 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
         ?: programmes.firstOrNull { it.startMillis != null && it.startMillis > now }
     val next = current?.let { programme -> programmes.firstOrNull { it.startMillis != null && programme.endMillis != null && it.startMillis >= programme.endMillis } }
     if (!loading && current == null) return
-    Surface(Modifier.fillMaxWidth().clickable(enabled = !loading) { showDescription = !showDescription }, shape = MaterialTheme.shapes.large, color = Color(0xE61A1D29)) {
+    Surface(Modifier.fillMaxWidth().clickable(enabled = !loading) { showDescription = !showDescription; onExpandedChanged(showDescription) }, shape = MaterialTheme.shapes.large, color = Color(0xE61A1D29)) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.LiveTv, null, Modifier.size(18.dp), tint = Color(0xFF9EB4FF))
