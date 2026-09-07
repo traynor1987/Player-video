@@ -11,6 +11,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -182,12 +183,13 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
 
 @Composable private fun MiniEpg(programmes: List<GuideProgramme>, loading: Boolean) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var showDescription by remember(programmes.firstOrNull()?.title) { mutableStateOf(false) }
     LaunchedEffect(Unit) { while (isActive) { now = System.currentTimeMillis(); delay(1_000) } }
     val current = programmes.firstOrNull { it.startMillis != null && it.endMillis != null && it.startMillis <= now && it.endMillis > now }
         ?: programmes.firstOrNull { it.startMillis != null && it.startMillis > now }
     val next = current?.let { programme -> programmes.firstOrNull { it.startMillis != null && programme.endMillis != null && it.startMillis >= programme.endMillis } }
     if (!loading && current == null) return
-    Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = Color(0xE61A1D29)) {
+    Surface(Modifier.fillMaxWidth().clickable(enabled = !loading) { showDescription = !showDescription }, shape = MaterialTheme.shapes.large, color = Color(0xE61A1D29)) {
         Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.LiveTv, null, Modifier.size(18.dp), tint = Color(0xFF9EB4FF))
@@ -200,6 +202,14 @@ enum class PlaybackType { LIVE, MOVIE, EPISODE }
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             } else {
                 Text(current?.title.orEmpty(), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                if (showDescription) {
+                    Text(
+                        current?.description?.takeIf { it.isNotBlank() } ?: "No programme description is available from this guide.",
+                        color = Color.White.copy(alpha = .82f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 4
+                    )
+                }
                 val progress = current?.let { item ->
                     if (item.startMillis != null && item.endMillis != null && item.endMillis > item.startMillis) ((now - item.startMillis).toFloat() / (item.endMillis - item.startMillis)).coerceIn(0f, 1f) else 0f
                 } ?: 0f
