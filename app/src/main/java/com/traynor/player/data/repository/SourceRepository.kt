@@ -88,12 +88,12 @@ class SourceRepository(
 
     private fun importM3u(source: SourceEntity): Flow<ImportProgress> {
         val endpoint = cipher.decrypt(source.endpointEncrypted)
-        val input = if (source.type == SourceType.LOCAL_M3U) resolver.openInputStream(Uri.parse(endpoint))
+        val input: java.io.InputStream = (if (source.type == SourceType.LOCAL_M3U) resolver.openInputStream(Uri.parse(endpoint))
             else client.newCall(Request.Builder().url(endpoint).build()).execute().let { response ->
                 if (!response.isSuccessful) { response.close(); throw IOException("Playlist unavailable") }
                 response.body?.byteStream()
             }
-        ?: error("Playlist unavailable")
+        ) ?: error("Playlist unavailable")
         return parser.parse(input) { batch -> channelDao.upsertAll(batch.mapIndexed { i, entry -> ChannelEntity(
             sourceId = source.id, externalId = "${entry.tvgId.orEmpty()}:${entry.url.hashCode()}:$i", name = entry.name,
             streamUrlEncrypted = cipher.encrypt(entry.url), logoUrl = entry.logo, category = entry.group ?: "Uncategorised",
