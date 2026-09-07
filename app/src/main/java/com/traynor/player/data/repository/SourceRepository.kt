@@ -14,9 +14,22 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
 
+data class SeriesEpisode(
+    val seriesId: Long,
+    val episodeId: String,
+    val season: String,
+    val number: Int?,
+    val title: String,
+    val extension: String?,
+    val description: String? = null,
+    val artworkUrl: String? = null
+)
+
 class SourceRepository(
     private val sourceDao: SourceDao,
     private val channelDao: ChannelDao,
+    private val movieDao: MovieDao,
+    private val seriesDao: SeriesDao,
     private val cipher: CredentialCipher,
     private val api: XtreamApi,
     private val client: OkHttpClient,
@@ -65,6 +78,8 @@ class SourceRepository(
     fun refresh(sourceId: Long): Flow<ImportProgress> = flow {
         val source = sourceDao.get(sourceId) ?: error("Source no longer exists")
         channelDao.deleteForSource(sourceId)
+        movieDao.deleteForSource(sourceId)
+        seriesDao.deleteForSource(sourceId)
         when (source.type) {
             SourceType.XTREAM -> importXtream(source)
             SourceType.REMOTE_M3U, SourceType.LOCAL_M3U -> emitAll(importM3u(source))
@@ -84,7 +99,40 @@ class SourceRepository(
                 category = categories[item.categoryId] ?: "Uncategorised", tvgId = item.epgId, searchText = item.name.lowercase()) })
             emit(ImportProgress((index + 1) * 500.coerceAtMost(streams.size), "Importing Live TV"))
         }
-        emit(ImportProgress(streams.size, "Imported ${streams.size} live channels", true))
+        emit(ImportProgress(streams.size, "Imported ${streams.size} live channels"))
+        importMovies(source, endpoint, server, user, pass)
+        importSeries(source, endpoint, user, pass)
+        emit(ImportProgress(streams.size, "Source library is ready", true))
+    }
+
+    private suspend fun FlowCollector<ImportProgress>.importMovies(source: SourceEntity, endpoint: String, server: String, user: String, pass: String) {
+        val categories = api.categories(endpoint, user, pass, "get_vod_categories").body().orEmpty().associate { it.id to it.name }
+        val movies = api.vodStreams(endpoint, user, pass).body().orEmpty()
+        movies.chunked(500).forEachIndexed { index, batch ->
+            movieDao.upsertAll(batch.map { item -> MovieEntity(
+                sourceId = source.id, externalId = item.id.toString(), title = item.name,
+                streamUrlEncrypted = cipher.encrypt(XtreamUrls.movie(server, user, pass, item.id, item.extension)),
+                posterUrl = item.icon, category = categories[item.categoryId] ?: "Uncategorised",
+                description = item.plot, year = item.year, rating = item.rating, runtime = item.duration,
+                searchText = item.name.lowercase()
+            ) })
+            emit(ImportProgress((index + 1) * 500, "Importing movies"))
+        }
+        emit(ImportProgress(movies.size, "Imported ${movies.size} movies"))
+    }
+
+    private suspend fun FlowCollector<ImportProgress>.importSeries(source: SourceEntity, endpoint: String, user: String, pass: String) {
+        val categories = api.categories(endpoint, user, pass, "get_series_categories").body().orEmpty().associate { it.id to it.name }
+        val shows = api.series(endpoint, user, pass).body().orEmpty()
+        shows.chunked(500).forEachIndexed { index, batch ->
+            seriesDao.upsertAll(batch.map { item -> SeriesEntity(
+                sourceId = source.id, externalId = item.id.toString(), title = item.name, posterUrl = item.cover,
+                category = categories[item.categoryId] ?: "Uncategorised", description = item.plot,
+                year = item.year, rating = item.rating, searchText = item.name.lowercase()
+            ) })
+            emit(ImportProgress((index + 1) * 500, "Importing series"))
+        }
+        emit(ImportProgress(shows.size, "Imported ${shows.size} series"))
     }
 
     private fun importM3u(source: SourceEntity): Flow<ImportProgress> {
@@ -104,6 +152,28 @@ class SourceRepository(
     suspend fun playableUrls(channelId: Long): List<String> = channelDao.get(channelId)?.let {
         streamCandidates(cipher.decrypt(it.streamUrlEncrypted))
     }.orEmpty()
+
+    suspend fun playableMovieUrls(movieId: Long): List<String> = movieDao.get(movieId)?.let {
+        streamCandidates(cipher.decrypt(it.streamUrlEncrypted))
+    }.orEmpty()
+
+    suspend fun seriesEpisodes(seriesId: Long): List<SeriesEpisode> = withContext(Dispatchers.IO) {
+        val series = seriesDao.get(seriesId) ?: return@withContext emptyList()
+        val source = sourceDao.get(series.sourceId) ?: return@withContext emptyList()
+        if (source.type != SourceType.XTREAM) return@withContext emptyList()
+        val endpoint = XtreamUrls.api(cipher.decrypt(source.endpointEncrypted))
+        val response = api.seriesInfo(endpoint, cipher.decrypt(source.usernameEncrypted), cipher.decrypt(source.passwordEncrypted), seriesId = series.externalId)
+        response.body()?.episodes.orEmpty().flatMap { (season, episodes) -> episodes.mapNotNull { episode ->
+            episode.id?.takeIf { it.isNotBlank() }?.let { id -> SeriesEpisode(seriesId, id, season, episode.number, episode.title ?: "Episode", episode.extension, episode.info?.plot, episode.info?.image) }
+        } }.sortedWith(compareBy<SeriesEpisode> { it.season.toIntOrNull() ?: Int.MAX_VALUE }.thenBy { it.number ?: Int.MAX_VALUE })
+    }
+
+    suspend fun playableEpisodeUrls(seriesId: Long, episodeId: String, extension: String?): List<String> = withContext(Dispatchers.IO) {
+        val series = seriesDao.get(seriesId) ?: return@withContext emptyList()
+        val source = sourceDao.get(series.sourceId) ?: return@withContext emptyList()
+        if (source.type != SourceType.XTREAM) return@withContext emptyList()
+        listOf(XtreamUrls.episode(cipher.decrypt(source.endpointEncrypted), cipher.decrypt(source.usernameEncrypted), cipher.decrypt(source.passwordEncrypted), episodeId, extension))
+    }
 
     private fun String?.asPlayableHttpUrl(): String? = this?.trim()?.takeIf {
         runCatching {

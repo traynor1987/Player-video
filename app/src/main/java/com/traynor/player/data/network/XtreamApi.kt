@@ -14,6 +14,18 @@ data class XtreamUserInfo(val username: String? = null, val status: String? = nu
 @JsonClass(generateAdapter = true)
 data class XtreamCategory(@Json(name = "category_id") val id: String, @Json(name = "category_name") val name: String)
 @JsonClass(generateAdapter = true)
+data class XtreamVodStream(
+    @Json(name = "stream_id") val id: Int,
+    val name: String,
+    @Json(name = "stream_icon") val icon: String? = null,
+    @Json(name = "category_id") val categoryId: String? = null,
+    @Json(name = "container_extension") val extension: String? = null,
+    val rating: String? = null,
+    val year: String? = null,
+    val plot: String? = null,
+    val duration: String? = null
+)
+@JsonClass(generateAdapter = true)
 data class XtreamStream(
     @Json(name = "stream_id") val id: Int,
     val name: String,
@@ -27,13 +39,35 @@ data class XtreamStream(
     @Json(name = "direct_source") val directSource: String? = null
 )
 @JsonClass(generateAdapter = true)
-data class XtreamSeries(@Json(name = "series_id") val id: Int, val name: String, @Json(name = "cover") val cover: String? = null, @Json(name = "category_id") val categoryId: String? = null)
+data class XtreamSeries(
+    @Json(name = "series_id") val id: Int,
+    val name: String,
+    @Json(name = "cover") val cover: String? = null,
+    @Json(name = "category_id") val categoryId: String? = null,
+    val plot: String? = null,
+    val rating: String? = null,
+    val year: String? = null
+)
+@JsonClass(generateAdapter = true)
+data class XtreamSeriesInfo(val episodes: Map<String, List<XtreamEpisode>>? = null)
+@JsonClass(generateAdapter = true)
+data class XtreamEpisode(
+    val id: String? = null,
+    val title: String? = null,
+    @Json(name = "episode_num") val number: Int? = null,
+    @Json(name = "container_extension") val extension: String? = null,
+    val info: XtreamEpisodeInfo? = null
+)
+@JsonClass(generateAdapter = true)
+data class XtreamEpisodeInfo(val plot: String? = null, val duration: String? = null, @Json(name = "movie_image") val image: String? = null)
 
 interface XtreamApi {
     @GET suspend fun authenticate(@Url url: String, @Query("username") username: String, @Query("password") password: String): Response<XtreamAuthResponse>
     @GET suspend fun categories(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String): Response<List<XtreamCategory>>
     @GET suspend fun streams(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String): Response<List<XtreamStream>>
+    @GET suspend fun vodStreams(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String = "get_vod_streams"): Response<List<XtreamVodStream>>
     @GET suspend fun series(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String = "get_series"): Response<List<XtreamSeries>>
+    @GET suspend fun seriesInfo(@Url url: String, @Query("username") username: String, @Query("password") password: String, @Query("action") action: String = "get_series_info", @Query("series_id") seriesId: String): Response<XtreamSeriesInfo>
 }
 
 object XtreamUrls {
@@ -54,5 +88,7 @@ object XtreamUrls {
         "${normaliseServer(server)}/live/${encode(user)}/${encode(password)}/$id.${extension ?: "ts"}"
     fun movie(server: String, user: String, password: String, id: Int, extension: String?): String =
         "${normaliseServer(server)}/movie/${encode(user)}/${encode(password)}/$id.${extension ?: "mp4"}"
+    fun episode(server: String, user: String, password: String, id: String, extension: String?): String =
+        "${normaliseServer(server)}/series/${encode(user)}/${encode(password)}/${encode(id)}.${extension ?: "mp4"}"
     private fun encode(value: String) = java.net.URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
 }

@@ -59,6 +59,51 @@ class LiveViewModel(private val container: AppContainer) : ViewModel() {
     } }
 }
 
+data class MoviesUiState(val sourceId: Long? = null, val categories: List<String> = emptyList(), val selectedCategory: String? = null, val movies: List<com.traynor.player.data.local.MovieEntity> = emptyList(), val query: String = "", val loading: Boolean = true)
+class MoviesViewModel(private val container: AppContainer) : ViewModel() {
+    private val category = MutableStateFlow<String?>(null); private val query = MutableStateFlow("")
+    val state: StateFlow<MoviesUiState> = container.preferences.activeSourceId.filterNotNull().flatMapLatest { sourceId ->
+        combine(container.database.movieDao().categories(sourceId), category, query) { categories, selected, term -> Triple(categories, selected, term) }
+            .flatMapLatest { (categories, selected, term) -> container.database.movieDao().observePage(sourceId, selected, term).map { MoviesUiState(sourceId, categories, selected, it, term, false) } }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MoviesUiState())
+    fun selectCategory(value: String?) { category.value = value }
+    fun search(value: String) { query.value = value }
+    companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = MoviesViewModel(container) as T
+    } }
+}
+
+data class SeriesUiState(val sourceId: Long? = null, val categories: List<String> = emptyList(), val selectedCategory: String? = null, val series: List<com.traynor.player.data.local.SeriesEntity> = emptyList(), val query: String = "", val loading: Boolean = true)
+class SeriesViewModel(private val container: AppContainer) : ViewModel() {
+    private val category = MutableStateFlow<String?>(null); private val query = MutableStateFlow("")
+    val state: StateFlow<SeriesUiState> = container.preferences.activeSourceId.filterNotNull().flatMapLatest { sourceId ->
+        combine(container.database.seriesDao().categories(sourceId), category, query) { categories, selected, term -> Triple(categories, selected, term) }
+            .flatMapLatest { (categories, selected, term) -> container.database.seriesDao().observePage(sourceId, selected, term).map { SeriesUiState(sourceId, categories, selected, it, term, false) } }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SeriesUiState())
+    fun selectCategory(value: String?) { category.value = value }
+    fun search(value: String) { query.value = value }
+    companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = SeriesViewModel(container) as T
+    } }
+}
+
+data class SeriesDetailUiState(val loading: Boolean = true, val series: com.traynor.player.data.local.SeriesEntity? = null, val episodes: List<com.traynor.player.data.repository.SeriesEpisode> = emptyList(), val error: Boolean = false)
+class SeriesDetailViewModel(private val container: AppContainer) : ViewModel() {
+    private val mutable = MutableStateFlow(SeriesDetailUiState())
+    val state = mutable.asStateFlow()
+    fun load(id: Long) = viewModelScope.launch {
+        val series = container.database.seriesDao().get(id)
+        if (series == null) { mutable.value = SeriesDetailUiState(loading = false, error = true); return@launch }
+        mutable.value = SeriesDetailUiState(series = series)
+        runCatching { container.sourceRepository.seriesEpisodes(id) }
+            .onSuccess { mutable.value = SeriesDetailUiState(loading = false, series = series, episodes = it) }
+            .onFailure { mutable.value = SeriesDetailUiState(loading = false, series = series, error = true) }
+    }
+    companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = SeriesDetailViewModel(container) as T
+    } }
+}
+
 data class SourceRefreshUiState(val sourceId: Long? = null, val message: String? = null, val running: Boolean = false, val failed: Boolean = false)
 class SourceRefreshViewModel(private val container: AppContainer) : ViewModel() {
     private val mutable = MutableStateFlow(SourceRefreshUiState())

@@ -33,11 +33,12 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.traynor.player.AppContainer
-import com.traynor.player.ui.LiveViewModel
 import kotlinx.coroutines.delay
 
-@Composable fun VideoPlayer(channelId: Long, container: AppContainer, enterPip: (Rational) -> Unit, inPip: Boolean, close: () -> Unit) {
-    val context = LocalContext.current; val model: LiveViewModel = viewModel(factory = LiveViewModel.factory(container))
+enum class PlaybackType { LIVE, MOVIE, EPISODE }
+
+@Composable fun VideoPlayer(contentId: Long, container: AppContainer, enterPip: (Rational) -> Unit, inPip: Boolean, close: () -> Unit, type: PlaybackType = PlaybackType.LIVE, episodeId: String? = null, extension: String? = null) {
+    val context = LocalContext.current
     var urls by remember { mutableStateOf(emptyList<String>()) }; var candidateIndex by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }; var controls by remember { mutableStateOf(true) }; var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var buffering by remember { mutableStateOf(false) }; var ready by remember { mutableStateOf(false) }; var attempt by remember { mutableIntStateOf(0) }
@@ -47,7 +48,15 @@ import kotlinx.coroutines.delay
         .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
         .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(1_500, 15_000, 500, 1_000).build()).build().apply { playWhenReady = true } }
     val url = urls.getOrNull(candidateIndex)
-    LaunchedEffect(channelId) { urls = model.playableUrls(channelId); candidateIndex = 0; if (urls.isEmpty()) error = "This channel is unavailable" }
+    LaunchedEffect(contentId, type, episodeId, extension) {
+        urls = when (type) {
+            PlaybackType.LIVE -> container.sourceRepository.playableUrls(contentId)
+            PlaybackType.MOVIE -> container.sourceRepository.playableMovieUrls(contentId)
+            PlaybackType.EPISODE -> episodeId?.let { container.sourceRepository.playableEpisodeUrls(contentId, it, extension) }.orEmpty()
+        }
+        candidateIndex = 0
+        if (urls.isEmpty()) error = "This video is unavailable"
+    }
     LaunchedEffect(url, attempt) { url?.let {
         error = null; ready = false; buffering = true
         player.setMediaItem(MediaItem.Builder().setUri(it).setMimeType(it.guessMimeType()).build()); player.prepare(); player.play()
@@ -110,11 +119,11 @@ import kotlinx.coroutines.delay
             modifier = Modifier.fillMaxSize()
         )
         if (!inPip && buffering && error == null) Row(Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = .6f), MaterialTheme.shapes.large).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = Color.White); Spacer(Modifier.width(12.dp)); Text(if (candidateIndex > 0) "Trying compatible stream…" else "Buffering stream…", color = Color.White) }
-        if (!inPip) AnimatedVisibility(controls) { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .35f))) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text("Live TV", color = Color.White, style = MaterialTheme.typography.titleLarge); Text("Live stream", color = Color.White.copy(alpha = .75f)) } }
+        if (!inPip) AnimatedVisibility(controls) { Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .35f))) { Row(Modifier.align(Alignment.TopStart).padding(18.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(close) { Icon(Icons.Default.ArrowBack, "Back", tint = Color.White) }; Spacer(Modifier.width(8.dp)); Column { Text(if (type == PlaybackType.LIVE) "Live TV" else if (type == PlaybackType.MOVIE) "Movie" else "Episode", color = Color.White, style = MaterialTheme.typography.titleLarge); Text(if (type == PlaybackType.LIVE) "Live stream" else "On-demand video", color = Color.White.copy(alpha = .75f)) } }
             Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                IconButton({ /* previous channel foundation */ }) { Icon(Icons.Default.SkipPrevious, "Previous channel", tint = Color.White) }
+                if (type == PlaybackType.LIVE) IconButton({ /* previous channel foundation */ }) { Icon(Icons.Default.SkipPrevious, "Previous channel", tint = Color.White) }
                 FilledIconButton({ if (player.isPlaying) player.pause() else player.play() }, Modifier.size(64.dp)) { Icon(if (player.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", Modifier.size(36.dp)) }
-                IconButton({ /* next channel foundation */ }) { Icon(Icons.Default.SkipNext, "Next channel", tint = Color.White) }
+                if (type == PlaybackType.LIVE) IconButton({ /* next channel foundation */ }) { Icon(Icons.Default.SkipNext, "Next channel", tint = Color.White) }
                 IconButton({ resizeMode = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT }) { Icon(Icons.Default.AspectRatio, "Fit or fill", tint = Color.White) }
                 IconButton({ controls = false; enterPip(pipAspectRatio) }) { Icon(Icons.Default.PictureInPictureAlt, "Picture in Picture", tint = Color.White) }
             }

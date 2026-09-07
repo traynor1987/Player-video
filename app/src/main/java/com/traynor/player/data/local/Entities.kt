@@ -34,6 +34,44 @@ data class ChannelEntity(
     val searchText: String = name.lowercase()
 )
 
+@Entity(
+    tableName = "movies",
+    foreignKeys = [ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("sourceId"), Index("category"), Index("searchText"), Index(value = ["sourceId", "externalId"], unique = true)]
+)
+data class MovieEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sourceId: Long,
+    val externalId: String,
+    val title: String,
+    val streamUrlEncrypted: String,
+    val posterUrl: String? = null,
+    val category: String = "Uncategorised",
+    val description: String? = null,
+    val year: String? = null,
+    val rating: String? = null,
+    val runtime: String? = null,
+    val searchText: String = title.lowercase()
+)
+
+@Entity(
+    tableName = "series",
+    foreignKeys = [ForeignKey(entity = SourceEntity::class, parentColumns = ["id"], childColumns = ["sourceId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("sourceId"), Index("category"), Index("searchText"), Index(value = ["sourceId", "externalId"], unique = true)]
+)
+data class SeriesEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sourceId: Long,
+    val externalId: String,
+    val title: String,
+    val posterUrl: String? = null,
+    val category: String = "Uncategorised",
+    val description: String? = null,
+    val year: String? = null,
+    val rating: String? = null,
+    val searchText: String = title.lowercase()
+)
+
 @Entity(tableName = "favourites", primaryKeys = ["sourceId", "contentType", "contentId"], indices = [Index("contentType")])
 data class FavouriteEntity(val sourceId: Long, val contentType: ContentType, val contentId: String, val createdAt: Long = System.currentTimeMillis())
 
@@ -68,6 +106,22 @@ data class HistoryEntity(
     @Query("DELETE FROM channels WHERE sourceId=:sourceId") suspend fun deleteForSource(sourceId: Long)
 }
 
+@Dao interface MovieDao {
+    @Query("SELECT DISTINCT category FROM movies WHERE sourceId=:sourceId ORDER BY category") fun categories(sourceId: Long): Flow<List<String>>
+    @Query("SELECT * FROM movies WHERE sourceId=:sourceId AND (:category IS NULL OR category=:category) AND searchText LIKE '%' || lower(:query) || '%' ORDER BY title LIMIT :limit OFFSET :offset") fun observePage(sourceId: Long, category: String?, query: String, limit: Int = 250, offset: Int = 0): Flow<List<MovieEntity>>
+    @Query("SELECT * FROM movies WHERE id=:id") suspend fun get(id: Long): MovieEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(items: List<MovieEntity>)
+    @Query("DELETE FROM movies WHERE sourceId=:sourceId") suspend fun deleteForSource(sourceId: Long)
+}
+
+@Dao interface SeriesDao {
+    @Query("SELECT DISTINCT category FROM series WHERE sourceId=:sourceId ORDER BY category") fun categories(sourceId: Long): Flow<List<String>>
+    @Query("SELECT * FROM series WHERE sourceId=:sourceId AND (:category IS NULL OR category=:category) AND searchText LIKE '%' || lower(:query) || '%' ORDER BY title LIMIT :limit OFFSET :offset") fun observePage(sourceId: Long, category: String?, query: String, limit: Int = 250, offset: Int = 0): Flow<List<SeriesEntity>>
+    @Query("SELECT * FROM series WHERE id=:id") suspend fun get(id: Long): SeriesEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertAll(items: List<SeriesEntity>)
+    @Query("DELETE FROM series WHERE sourceId=:sourceId") suspend fun deleteForSource(sourceId: Long)
+}
+
 @Dao interface LibraryDao {
     @Query("SELECT EXISTS(SELECT 1 FROM favourites WHERE sourceId=:sourceId AND contentType=:type AND contentId=:contentId)") fun isFavourite(sourceId: Long, type: ContentType, contentId: String): Flow<Boolean>
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun favourite(item: FavouriteEntity)
@@ -83,10 +137,12 @@ class Converters {
     @TypeConverter fun toContentType(value: String) = ContentType.valueOf(value)
 }
 
-@Database(entities = [SourceEntity::class, ChannelEntity::class, FavouriteEntity::class, HistoryEntity::class], version = 1, exportSchema = true)
+@Database(entities = [SourceEntity::class, ChannelEntity::class, MovieEntity::class, SeriesEntity::class, FavouriteEntity::class, HistoryEntity::class], version = 2, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class PlayerDatabase : RoomDatabase() {
     abstract fun sourceDao(): SourceDao
     abstract fun channelDao(): ChannelDao
+    abstract fun movieDao(): MovieDao
+    abstract fun seriesDao(): SeriesDao
     abstract fun libraryDao(): LibraryDao
 }
