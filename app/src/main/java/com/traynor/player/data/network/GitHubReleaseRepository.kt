@@ -14,6 +14,7 @@ import com.squareup.moshi.Moshi
 data class GitHubRelease(
     @Json(name = "tag_name") val tagName: String,
     @Json(name = "html_url") val htmlUrl: String,
+    val body: String? = null,
     val assets: List<GitHubReleaseAsset> = emptyList()
 )
 @JsonClass(generateAdapter = true)
@@ -26,18 +27,32 @@ data class GitHubReleaseAsset(
 
 private interface GitHubReleasesApi { @retrofit2.http.GET("repos/traynor1987/Player-video/releases/latest") suspend fun latest(): GitHubRelease }
 
-data class AvailableUpdate(val version: String, val asset: GitHubReleaseAsset)
+data class AvailableUpdate(
+    val version: String,
+    val asset: GitHubReleaseAsset,
+    val checksum: GitHubReleaseAsset? = null,
+    val notes: String? = null,
+    val releaseUrl: String
+)
+data class ReleaseCheck(val latestVersion: String, val releaseUrl: String, val update: AvailableUpdate?)
 
 class GitHubReleaseRepository(client: OkHttpClient) {
     private val api = Retrofit.Builder().baseUrl("https://api.github.com/")
         .client(client.newBuilder().addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("Accept", "application/vnd.github+json").header("User-Agent", "Player-Android").build()) }.build())
         .addConverterFactory(MoshiConverterFactory.create(Moshi.Builder().build())).build().create(GitHubReleasesApi::class.java)
 
-    suspend fun latestApk(currentVersion: String): AvailableUpdate? = withContext(Dispatchers.IO) {
+    suspend fun check(currentVersion: String): ReleaseCheck = withContext(Dispatchers.IO) {
         val release = api.latest()
         val version = release.tagName.removePrefix("v")
-        val apk = release.assets.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) } ?: return@withContext null
-        if (compareVersions(version, currentVersion) > 0) AvailableUpdate(version, apk) else null
+        require(version.matches(Regex("\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?"))) { "Latest release has an invalid version" }
+        val apkName = "Player-v$version.apk"
+        val apk = release.assets.firstOrNull { it.name == apkName }
+            ?: error("Latest release does not contain $apkName")
+        val checksum = release.assets.firstOrNull { it.name == "$apkName.sha256" }
+        val update = if (compareVersions(version, currentVersion) > 0) {
+            AvailableUpdate(version, apk, checksum, release.body?.takeIf { it.isNotBlank() }, release.htmlUrl)
+        } else null
+        ReleaseCheck(version, release.htmlUrl, update)
     }
 
     private fun compareVersions(left: String, right: String): Int {

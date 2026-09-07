@@ -188,17 +188,28 @@ private fun navigate(nav: androidx.navigation.NavHostController, route: String) 
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Signed APK releases", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     when (val state = updateState) {
-                        UpdateUiState.Idle -> Text("Installed: v${BuildConfig.VERSION_NAME}. Check GitHub for an official signed update.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        UpdateUiState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Checking GitHub…") }
-                        UpdateUiState.UpToDate -> Text("You’re up to date.", color = MaterialTheme.colorScheme.primary)
-                        UpdateUiState.Unavailable -> Text("Couldn’t check for an update. Your current app is unchanged.", color = MaterialTheme.colorScheme.error)
-                        is UpdateUiState.Available -> { Text("Player v${state.update.version} is ready.", color = MaterialTheme.colorScheme.primary); Button({ context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(state.update.asset.downloadUrl))) }) { Icon(Icons.Default.SystemUpdate, null); Spacer(Modifier.width(8.dp)); Text("Download signed APK") } }
+                        is UpdateUiState.Idle -> UpdateSummary("Installed: v${BuildConfig.VERSION_NAME}", "Check GitHub for an official signed update.", state.lastCheckedAt)
+                        is UpdateUiState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Spacer(Modifier.width(10.dp)); Text("Checking GitHub…") }
+                        is UpdateUiState.UpToDate -> UpdateSummary("You’re up to date", "Installed: v${BuildConfig.VERSION_NAME} • Latest: v${state.latestVersion}", state.lastCheckedAt, MaterialTheme.colorScheme.primary)
+                        is UpdateUiState.Available -> { UpdateSummary("Update available", "Installed: v${BuildConfig.VERSION_NAME} • Available: v${state.update.version}", state.lastCheckedAt, MaterialTheme.colorScheme.primary); state.update.notes?.let { Text(it, maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant) }; Button({ updateModel.download(state.update) }) { Icon(Icons.Default.Download, null); Spacer(Modifier.width(8.dp)); Text("Download update") } }
+                        is UpdateUiState.Downloading -> { Text("Downloading update ${state.progress}%", color = MaterialTheme.colorScheme.primary); LinearProgressIndicator({ state.progress / 100f }, Modifier.fillMaxWidth()) }
+                        is UpdateUiState.ReadyToInstall -> { Text("Ready to install v${state.verified.update.version}", color = MaterialTheme.colorScheme.primary); Text("Verified signed APK • ${state.verified.sha256.take(12)}…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Button({ updateModel.install(state.verified) }) { Icon(Icons.Default.SystemUpdate, null); Spacer(Modifier.width(8.dp)); Text("Install update") } }
+                        is UpdateUiState.PermissionRequired -> { Text("Allow Player to install updates, then tap Install update again.", color = MaterialTheme.colorScheme.error); Button({ updateModel.install(state.verified) }) { Text("Allow installs") } }
+                        is UpdateUiState.InstallerOpened -> Text("Android’s installer is open for Player v${state.version}.", color = MaterialTheme.colorScheme.primary)
+                        is UpdateUiState.DebugBuild -> { UpdateSummary("Official release available", "This is a debug build (v${BuildConfig.VERSION_NAME}). Install v${state.latestVersion} once from GitHub; future signed updates install over it.", state.lastCheckedAt); OutlinedButton({ context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(state.releaseUrl))) }) { Text("Open official release") } }
+                        is UpdateUiState.Failed -> Text(state.message, color = MaterialTheme.colorScheme.error)
                     }
-                    if (updateState !is UpdateUiState.Checking && updateState !is UpdateUiState.Available) OutlinedButton(updateModel::check) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Check for updates") }
+                    if (updateState !is UpdateUiState.Checking && updateState !is UpdateUiState.Downloading && updateState !is UpdateUiState.ReadyToInstall && updateState !is UpdateUiState.PermissionRequired && updateState !is UpdateUiState.InstallerOpened) OutlinedButton(updateModel::check) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Check for updates") }
                 }
             }
         }
         item { Text("Storage", style = MaterialTheme.typography.titleLarge); OutlinedButton({ /* confirmation UI is added with history screen */ }) { Icon(Icons.Default.DeleteSweep, null); Spacer(Modifier.width(8.dp)); Text("Clear history") } }
         item { Text("About", style = MaterialTheme.typography.titleLarge); Text("Player ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\nNative Android • com.traynor.player", color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
+}
+
+@Composable private fun UpdateSummary(title: String, detail: String, checkedAt: Long?, color: Color = MaterialTheme.colorScheme.onSurface) {
+    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = color)
+    Text(detail, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    checkedAt?.let { Text("Last checked: ${java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(it)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 }

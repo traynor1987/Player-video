@@ -163,19 +163,46 @@ class SourceRefreshViewModel(private val container: AppContainer) : ViewModel() 
 }
 
 sealed interface UpdateUiState {
-    data object Idle : UpdateUiState
-    data object Checking : UpdateUiState
-    data object UpToDate : UpdateUiState
-    data class Available(val update: com.traynor.player.data.network.AvailableUpdate) : UpdateUiState
-    data object Unavailable : UpdateUiState
+    data class Idle(val lastCheckedAt: Long? = null) : UpdateUiState
+    data class Checking(val lastCheckedAt: Long? = null) : UpdateUiState
+    data class UpToDate(val latestVersion: String, val lastCheckedAt: Long) : UpdateUiState
+    data class Available(val update: com.traynor.player.data.network.AvailableUpdate, val lastCheckedAt: Long) : UpdateUiState
+    data class Downloading(val update: com.traynor.player.data.network.AvailableUpdate, val progress: Int) : UpdateUiState
+    data class ReadyToInstall(val verified: com.traynor.player.data.network.VerifiedUpdate) : UpdateUiState
+    data class PermissionRequired(val verified: com.traynor.player.data.network.VerifiedUpdate) : UpdateUiState
+    data class InstallerOpened(val version: String) : UpdateUiState
+    data class DebugBuild(val latestVersion: String, val releaseUrl: String, val lastCheckedAt: Long) : UpdateUiState
+    data class Failed(val message: String, val lastCheckedAt: Long? = null) : UpdateUiState
 }
 class UpdateViewModel(private val container: AppContainer) : ViewModel() {
-    private val mutable = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle)
+    private val mutable = MutableStateFlow<UpdateUiState>(UpdateUiState.Idle())
     val state = mutable.asStateFlow()
+    init { viewModelScope.launch {
+        val last = container.preferences.lastUpdateCheckAt.first()
+        mutable.value = UpdateUiState.Idle(last)
+        if (last == null || System.currentTimeMillis() - last >= 24 * 60 * 60 * 1_000L) check()
+    } }
     fun check() = viewModelScope.launch {
-        mutable.value = UpdateUiState.Checking
-        mutable.value = runCatching { container.releaseRepository.latestApk(com.traynor.player.BuildConfig.VERSION_NAME) }
-            .fold(onSuccess = { if (it == null) UpdateUiState.UpToDate else UpdateUiState.Available(it) }, onFailure = { UpdateUiState.Unavailable })
+        val last = container.preferences.lastUpdateCheckAt.first()
+        mutable.value = UpdateUiState.Checking(last)
+        runCatching { container.releaseRepository.check(com.traynor.player.BuildConfig.VERSION_NAME) }
+            .onSuccess { result ->
+                val checked = System.currentTimeMillis(); container.preferences.markUpdateChecked(checked)
+                mutable.value = if (com.traynor.player.BuildConfig.DEBUG) UpdateUiState.DebugBuild(result.latestVersion, result.releaseUrl, checked)
+                    else result.update?.let { UpdateUiState.Available(it, checked) } ?: UpdateUiState.UpToDate(result.latestVersion, checked)
+            }.onFailure { mutable.value = UpdateUiState.Failed("Could not check for updates. Check your connection and try again.", last) }
+    }
+    fun download(update: com.traynor.player.data.network.AvailableUpdate) = viewModelScope.launch {
+        mutable.value = UpdateUiState.Downloading(update, 0)
+        runCatching { container.updateInstaller.downloadAndVerify(update) { progress -> mutable.value = UpdateUiState.Downloading(update, progress) } }
+            .onSuccess { mutable.value = UpdateUiState.ReadyToInstall(it) }
+            .onFailure { mutable.value = UpdateUiState.Failed("The update could not be verified. Nothing was installed.", container.preferences.lastUpdateCheckAt.first()) }
+    }
+    fun install(verified: com.traynor.player.data.network.VerifiedUpdate) {
+        mutable.value = when (container.updateInstaller.openInstaller(verified)) {
+            com.traynor.player.data.network.InstallLaunchResult.PermissionRequired -> UpdateUiState.PermissionRequired(verified)
+            com.traynor.player.data.network.InstallLaunchResult.InstallerOpened -> UpdateUiState.InstallerOpened(verified.update.version)
+        }
     }
     companion object { fun factory(container: AppContainer) = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST") override fun <T : ViewModel> create(modelClass: Class<T>) = UpdateViewModel(container) as T

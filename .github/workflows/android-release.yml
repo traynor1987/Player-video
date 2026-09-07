@@ -60,25 +60,35 @@ jobs:
           test -s "$apk"
           build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
           "$build_tools/apksigner" verify --verbose --print-certs "$apk"
-          "$build_tools/aapt" dump badging "$apk" | grep -F "package: name='com.traynor.player'"
+          badging="$($build_tools/aapt dump badging "$apk")"
+          grep -F "package: name='com.traynor.player'" <<< "$badging"
           version="${GITHUB_REF_NAME#v}"
+          code="$(sed -n 's/.*versionCode = \([0-9][0-9]*\).*/\1/p' app/build.gradle.kts | head -1)"
+          grep -F "versionCode='$code' versionName='$version'" <<< "$badging"
           cp "$apk" "Player-v${version}.apk"
+          sha256sum "Player-v${version}.apk" > "Player-v${version}.apk.sha256"
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Player-${{ github.ref_name }}-signed
-          path: Player-v*.apk
+          path: |
+            Player-v*.apk
+            Player-v*.apk.sha256
           if-no-files-found: error
           retention-days: 30
       - name: Publish GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          files: Player-v*.apk
+          files: |
+            Player-v*.apk
+            Player-v*.apk.sha256
           fail_on_unmatched_files: true
           generate_release_notes: true
           body: |
             Native Android IPTV player foundation.
+
+            The attached SHA-256 file is used by Player before an in-app update is offered to Android's installer.
 
             This application contains no IPTV subscription, playlist, channel, or stream. Add only a source you are authorised to use.
       - name: Remove signing material
