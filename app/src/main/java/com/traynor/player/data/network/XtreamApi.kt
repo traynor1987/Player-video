@@ -21,7 +21,10 @@ data class XtreamStream(
     @Json(name = "category_id") val categoryId: String? = null,
     @Json(name = "epg_channel_id") val epgId: String? = null,
     @Json(name = "added") val added: String? = null,
-    @Json(name = "container_extension") val extension: String? = null
+    @Json(name = "container_extension") val extension: String? = null,
+    // Some legitimate Xtream-compatible services expose a stream-specific URL.
+    // Prefer it when supplied instead of reconstructing a generic endpoint.
+    @Json(name = "direct_source") val directSource: String? = null
 )
 @JsonClass(generateAdapter = true)
 data class XtreamSeries(@Json(name = "series_id") val id: Int, val name: String, @Json(name = "cover") val cover: String? = null, @Json(name = "category_id") val categoryId: String? = null)
